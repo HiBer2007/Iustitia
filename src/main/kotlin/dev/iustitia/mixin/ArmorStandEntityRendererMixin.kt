@@ -11,7 +11,6 @@ import net.minecraft.client.renderer.entity.state.ArmorStandRenderState
 import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.AABB
-import net.minecraft.world.phys.Vec3
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -20,37 +19,36 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
 /**
  * Prefixes the floating name of an armor-stand **hologram** that belongs to another player, so the
  * cheat-tier cue appears on servers that render a player's name via a marker ArmorStand riding
- * (or ridden by) the player instead of via the player's own `displayName` — common on ranked-PvP /
+ * (or ridden by) the player instead of via the player's own nametag — common on ranked-PvP /
  * nametag-plugin servers where the vanilla nametag is team-hidden. The armor stand has its OWN uuid
  * with no `FlagHistory`, so without this the hologram name is never prefixed (its `tierFor` is GREEN).
  *
  * This is the rider-coverage follow-up to [PlayerEntityRendererMixin] (which covers the player's own
- * `displayName`, with a `playerName` fallback). Read-only like it: mutates only the label text held in
- * `state.displayName` (inherited from `EntityRenderState`, accessed via [EntityRenderStateAccessor]).
+ * nametag, with a `scoreText` fallback). Read-only like it: mutates only the label text held in
+ * `state.nameTag` (inherited from `EntityRenderState`, accessed via [EntityRenderStateAccessor]).
  * No visibility/camera/packet touches. Whole body fail-open.
  *
- * ## Why a single `updateRenderState` inject (not `renderLabelIfPresent`)
+ * ## Why a single `extractRenderState` inject (not `submitNameDisplay`)
  *
- * `ArmorStandEntityRenderer` does NOT override `renderLabelIfPresent` — it inherits the base
- * `EntityRenderer.renderLabelIfPresent(EntityRenderState, …)`. Injecting an inherited method from a
+ * `ArmorStandRenderer` does NOT override `submitNameDisplay` — it inherits the base
+ * `EntityRenderer.submitNameDisplay(EntityRenderState, …)`. Injecting an inherited method from a
  * subclass mixin is fragile (the method body lives on the shared base class, so an inject would
- * affect every non-overriding renderer). We avoid that entirely: `ArmorStandEntityRenderer.
- * updateRenderState` calls `super.updateRenderState(entity, state, f)` first, and that base call
- * sets `state.displayName = getDisplayName(entity)` (the armor stand's custom name) when
- * `customNameVisible && within 64 blocks` (verified in the decompiled 1.21.11 source). So by the
- * TAIL of the subclass `updateRenderState`, `state.displayName` already holds the hologram text — we
- * just prefix it there. `renderLabelIfPresent` later reads `state.displayName` at draw time and sees
- * our prefix. The base `updateRenderState` re-sets `displayName` to the plain name every cycle, so
+ * affect every non-overriding renderer). We avoid that entirely: `ArmorStandRenderer.
+ * extractRenderState` calls `super.extractRenderState(entity, state, f)` first, and that base call
+ * sets `state.nameTag = getNameTag(entity)` (the armor stand's custom name) when
+ * `shouldShowName && within 64 blocks` (verified in the decompiled 26.3 `EntityRenderer.extractNameTags`).
+ * So by the TAIL of the subclass `extractRenderState`, `state.nameTag` already holds the hologram
+ * text — we just prefix it there. `submitNameDisplay` later reads `state.nameTag` at draw time and
+ * sees our prefix. The base extraction re-sets `nameTag` to the plain name every cycle, so
  * there is no cross-frame accumulation; the double-prefix guard is kept only as a belt-and-braces.
  *
  * ## Owner resolution (vehicle graph, read live — no tracking map needed)
  *
  * A hologram armor stand rides the player (stand = passenger, player = vehicle); stacked holograms
- * ride each other, so [ArmorStandEntity.getRootVehicle] walks up to the player. We also handle the
- * reverse (player rides the stand) via [ArmorStandEntity.getFirstPassenger]. Only an `OtherClient-
- * PlayerEntity` owner (and not the local player) is accepted. Non-riding teleport-follow holograms
- * are NOT covered by this (proximity matching is deferred — see the follow-up scope); only the
- * vehicle-attached case, which is the high-precision common case.
+ * ride each other, so [ArmorStand.getRootVehicle] walks up to the player. We also handle the
+ * reverse (player rides the stand) via [ArmorStand.getFirstPassenger]. Only a `RemotePlayer` owner
+ * (and not the local player) is accepted. Non-riding teleport-follow holograms are handled by the
+ * proximity fallback below; only the vehicle-attached case is high-precision.
  *
  * ## GREEN is skipped entirely
  *
@@ -60,10 +58,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * spurious `[+]`. The risk of a decorative stand being vehicle-attached to a *suspect* player is
  * near-zero (decorative stands are static), so YELLOW/RED here is high-confidence.
  *
- * Target verified against yarn 1.21.11: `ArmorStandEntityRenderer.updateRenderState(ArmorStandEntity,
- * ArmorStandEntityRenderState, float)V` (declared on the subclass — the handler's param types
- * disambiguate it from the generic bridge overloads, same mechanism as the player mixin's
- * `updateRenderState` inject).
+ * ## 26.3 port (target verified against `minecraft-merged-deobf-26.3.jar`)
+ *
+ * `ArmorStandEntityRenderer.updateRenderState(ArmorStandEntity, ArmorStandEntityRenderState, float)`
+ * → `ArmorStandRenderer.extractRenderState(ArmorStand, ArmorStandRenderState, float)` (same
+ * subclass-declared 3-arg shape, descriptor
+ * `(Lnet/minecraft/world/entity/decoration/ArmorStand;L...ArmorStandRenderState;F)V`, which also
+ * disambiguates it from the generic bridge overloads). Two API renames in the proximity scan:
+ * `World.getOtherEntities(entity, box, predicate)` → `getEntities(entity, box, predicate)`, and the
+ * `Box.of(center, dx, dy, dz)` helper is gone in 26.3 (`AABB.of` now takes a structure `BoundingBox`),
+ * so the box is built with the equivalent explicit `AABB(minX, minY, minZ, maxX, maxY, maxZ)`
+ * constructor.
  */
 @Mixin(ArmorStandRenderer::class)
 class ArmorStandEntityRendererMixin {
@@ -72,7 +77,7 @@ class ArmorStandEntityRendererMixin {
     private val loggedHologram =
         java.util.Collections.synchronizedSet(java.util.LinkedHashSet<String>())
 
-    @Inject(method = ["updateRenderState"], at = [At("TAIL")])
+    @Inject(method = ["extractRenderState"], at = [At("TAIL")])
     private fun iustitia_prefixHologramName(
         entity: ArmorStand,
         state: ArmorStandRenderState,
@@ -84,7 +89,7 @@ class ArmorStandEntityRendererMixin {
 
             // Owner = the player the hologram stand belongs to. Two resolution strategies:
             //  1) vehicle graph (high precision): the stand rides the player, or the player rides
-            //     the stand -> rootVehicle / firstPassenger yields the OtherClientPlayerEntity.
+            //     the stand -> rootVehicle / firstPassenger yields the RemotePlayer.
             //  2) proximity (fallback for teleport-follow holograms): many nametag plugins spawn a
             //     marker stand that teleports above the player each tick WITHOUT riding it, so the
             //     vehicle graph yields nothing. A name hologram sits ~2 blocks above the player's
@@ -108,8 +113,8 @@ class ArmorStandEntityRendererMixin {
             if (tier == FlagHistory.Tier.GREEN) return   // only YELLOW/RED on holograms
 
             val acc = state as? EntityRenderStateAccessor ?: return
-            // Base updateRenderState already set this to the stand's custom name (customNameVisible &&
-            // within 64 blocks); null means the server didn't make the stand's name visible.
+            // Base extractRenderState already set this to the stand's custom name (customNameVisible
+            // && within 64 blocks); null means the server didn't make the stand's name visible.
             val name = acc.iustitia_getDisplayName() ?: return
             val s = name.string
             if (s.startsWith(GREEN_MARK) || s.startsWith(YELLOW_MARK) || s.startsWith(RED_MARK)) return
@@ -131,15 +136,22 @@ class ArmorStandEntityRendererMixin {
      * Proximity owner resolution for a teleport-follow hologram stand (no vehicle link). Scans the
      * player entities in a tight box around the stand and returns the nearest one whose head-name
      * position aligns with the stand (horiz < [PROX_HORIZ], |stand.y - (player.y + PROX_NAME_Y)| <
-     * [PROX_VERT]). Uses [World.getOtherEntities] (entity-section indexed) so it's cheap. Fail-open.
+     * [PROX_VERT]). Uses `Level.getEntities(entity, box, predicate)` (entity-section indexed) so it's
+     * cheap. Fail-open.
      */
     private fun proximityOwner(stand: ArmorStand): RemotePlayer? {
         val world = Minecraft.getInstance().level ?: return null
         val self = Minecraft.getInstance().player?.uuid
-        val box = AABB.of(Vec3(stand.x, stand.y, stand.z), PROX_BOX_X, PROX_BOX_Y, PROX_BOX_X)
+        // 26.3: yarn `Box.of(center, dx, dy, dz)` is gone (`AABB.of` now takes a structure
+        // BoundingBox), so build the same center±half-sweep box with the explicit constructor.
+        val box = AABB(
+            stand.x - PROX_BOX_X / 2.0, stand.y - PROX_BOX_Y / 2.0, stand.z - PROX_BOX_X / 2.0,
+            stand.x + PROX_BOX_X / 2.0, stand.y + PROX_BOX_Y / 2.0, stand.z + PROX_BOX_X / 2.0,
+        )
+        // 26.3: yarn `getOtherEntities(entity, box, predicate)` → `getEntities(entity, box, predicate)`.
         var best: RemotePlayer? = null
         var bestHoriz = Double.MAX_VALUE
-        for (e in world.getOtherEntities(stand, box) { it is RemotePlayer }) {
+        for (e in world.getEntities(stand, box) { it is RemotePlayer }) {
             val p = e as RemotePlayer
             if (p.uuid == self) continue
             val dx = p.x - stand.x
@@ -186,7 +198,7 @@ class ArmorStandEntityRendererMixin {
         private const val PROX_HORIZ = 0.8       // max horizontal offset (blocks) from the player
         private const val PROX_NAME_Y = 2.0      // expected stand.y = player.y + this
         private const val PROX_VERT = 0.7        // max vertical offset (blocks) from player.y + PROX_NAME_Y
-        private const val PROX_BOX_X = 2.0       // getOtherEntities box half-sweep x/z (±1.0)
-        private const val PROX_BOX_Y = 4.0       // box y sweep (±2.0)
+        private const val PROX_BOX_X = 2.0       // getEntities box full x/z sweep (±1.0)
+        private const val PROX_BOX_Y = 4.0       // box full y sweep (±2.0)
     }
 }

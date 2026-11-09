@@ -20,19 +20,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
  *
  * ## Why `shouldRender` on the base `EntityRenderer`
  *
- * The per-player renderer (`PlayerEntityRenderer`) does NOT override `shouldRender` (it inherits it),
- * so a mixin there can't target it. `EntityRenderer` is where the method actually lives in bytecode
- * (verified: `public boolean shouldRender(T, Frustum, double, double, double)`), and it is the root
- * of the renderer hierarchy, so injecting here covers every player renderer that calls `super`.
- * `shouldRender` is the earliest cull gate — called once per entity per frame (before any model
- * work), so cancelling here is cheap and avoids the multi-pass flicker a `render`-targeting inject
- * would risk (shadow + main pass).
+ * The per-player renderer (`AvatarRenderer`, yarn `PlayerEntityRenderer`) does NOT override
+ * `shouldRender` (it inherits it), so a mixin there can't target it. `EntityRenderer` is where the
+ * method actually lives in bytecode (verified with javap: `public boolean shouldRender(T, Frustum,
+ * double, double, double, float)`), and it is the root of the renderer hierarchy, so injecting here
+ * covers every player renderer that calls `super`. `shouldRender` is the earliest cull gate — called
+ * once per entity per frame from `LevelExtractor` (before any model work), so cancelling here is
+ * cheap and avoids the multi-pass flicker a `render`-targeting inject would risk (shadow + main
+ * pass).
  *
  * ## Telling self apart from the other players
  *
- * `ClientPlayerEntity` and `OtherClientPlayerEntity` are SIBLINGS in yarn 1.21.11, both extending
- * `AbstractClientPlayerEntity` (verified with javap against the mapped jar). An
- * `as? OtherClientPlayerEntity` cast is therefore null for the local player: it identifies the OTHER
+ * `LocalPlayer` and `RemotePlayer` are SIBLINGS in 26.3, both extending `AbstractClientPlayer`
+ * (verified with javap against the 26.3 jar). An
+ * `as? RemotePlayer` cast is therefore null for the local player: it identifies the OTHER
  * players only. That is convenient for the other-player rule, but it means any self branch placed
  * after such a cast is unreachable dead code, which is the trap the shape below is written to avoid.
  * `isSelf` comes from the entity's uuid, and the branching itself is delegated to
@@ -70,8 +71,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
  * overwhelming common case), this mixin does one volatile read + an `as?` cast + early return —
  * negligible. Whole-body fail-open so a render error never crashes the frame.
  *
- * Target verified against yarn 1.21.11: `EntityRenderer.shouldRender(Lnet/minecraft/entity/Entity;
- * Lnet/minecraft/client/render/Frustum;DDD)Z` (T erases to `Entity`).
+ * Target verified against `minecraft-merged-deobf-26.3.jar`: `EntityRenderer.shouldRender(T,
+ * Frustum, double, double, double, float)Z` — descriptor
+ * `(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/client/renderer/culling/Frustum;DDDF)Z`
+ * (T erases to `Entity`). 26.3 appended a `float partialTicks` parameter (used by
+ * `getBoundingBoxForCulling`), hence the extra handler argument; the call site is
+ * `EntityRenderDispatcher.shouldRender(...)` from `LevelExtractor`, so cancelling still keeps the
+ * entity's render state out of `LevelRenderState.entityRenderStates` for that frame.
  */
 @Mixin(EntityRenderer::class)
 abstract class EntityRendererMixin {
@@ -83,6 +89,7 @@ abstract class EntityRendererMixin {
         x: Double,
         y: Double,
         z: Double,
+        partialTicks: Float,
         cir: CallbackInfoReturnable<Boolean>,
     ) {
         try {

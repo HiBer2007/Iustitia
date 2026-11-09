@@ -18,12 +18,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 /**
  * Block-change observer (read-only) for replay/clip world edits. Ported from SnapClip.
  *
- * `WorldChunk.setBlockState` is the single funnel for every block change this client applies — an
- * incoming block-update packet from the server, a chunk load, or a local prediction. Injecting at
- * `HEAD` and diffing the old vs new state records `(tick, pos, before, after)` into
- * [BlockDeltaBuffer] (and into an active `/ius record` via [RecordManager.recordDelta]), so a replay
- * or clip can play back the world **as it changed** — a wall broken mid-fight, a temporary block —
- * on top of the captured chunk snapshot.
+ * `WorldChunk.setBlockState` (yarn; 26.3 class `LevelChunk`, same method name) is the single funnel
+ * for every block change this client applies — an incoming block-update packet from the server, a
+ * chunk load, or a local prediction. Injecting at `HEAD` and diffing the old vs new state records
+ * `(tick, pos, before, after)` into [BlockDeltaBuffer] (and into an active `/ius record` via
+ * [RecordManager.recordDelta]), so a replay or clip can play back the world **as it changed** — a
+ * wall broken mid-fight, a temporary block — on top of the captured chunk snapshot.
  *
  * ## Not a send path, not a mutation
  *
@@ -38,6 +38,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
  * see [CompanionMods.snapClip]) and while replay capture is off, so the per-change work is paid only
  * when Iustitia actually owns and records replay. The bridge is the line before vanilla's own write:
  * `getBlockState` still returns the pre-change state at `HEAD`.
+ *
+ * ## 26.3 target
+ *
+ * `LevelChunk.setBlockState(BlockPos, BlockState, int) -> BlockState` — verified with javap against
+ * `minecraft-merged-deobf-26.3.jar`; it is the only overload, and the handler's `(BlockPos,
+ * BlockState, int)` signature matches it exactly.
  */
 @Mixin(LevelChunk::class)
 class WorldChunkMixin {

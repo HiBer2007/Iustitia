@@ -14,20 +14,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  *
  * ## Why
  *
- * Vanilla routes mouse deltas to the local player via `Entity.changeLookDirection(double, double)`
- * (yarn; mojmap `Entity.turn`). With the FREECAM pose overriding the camera (pure camera-override,
- * v1.2.0 rework), the user expects the mouse to turn the **camera**, not the (now-frozen, hidden)
- * player. So when FREECAM is active and this call is on the local player, apply it to the freecam
- * pose via [ReplayState.applyFreecamLook] and cancel the player's own turn — the player's yaw/pitch
- * stays frozen (it's hidden + its walking is already suppressed by [ClientPlayerEntityMixin]), and
- * the freecam pose (which [dev.iustitia.mixin.CameraMixin] writes to the camera) tracks the mouse
- * directly. This is what makes FREECAM feel like a real detached spectator camera rather than the
- * old synthetic drive.
+ * Vanilla routes mouse deltas to the local player via `Entity.turn(double, double)` (yarn
+ * `changeLookDirection`; `MouseHandler` calls `minecraft.player.turn(...)`). With the FREECAM pose
+ * overriding the camera (pure camera-override, v1.2.0 rework), the user expects the mouse to turn the
+ * **camera**, not the (now-frozen, hidden) player. So when FREECAM is active and this call is on the
+ * local player, apply it to the freecam pose via [ReplayState.applyFreecamLook] and cancel the
+ * player's own turn — the player's yaw/pitch stays frozen (it's hidden + its walking is already
+ * suppressed by [ClientPlayerEntityMixin]), and the freecam pose (which [dev.iustitia.mixin.CameraMixin]
+ * writes to the camera) tracks the mouse directly. This is what makes FREECAM feel like a real
+ * detached spectator camera rather than the old synthetic drive.
  *
  * ## Re-entrancy
  *
  * The redirect calls `ReplayState.applyFreecamLook`, which only mutates the pose primitives — it does
- * NOT call back into `changeLookDirection`, so there is no re-entrant mixin fire.
+ * NOT call back into `turn`, so there is no re-entrant mixin fire.
  *
  * ## Gate + fail-open
  *
@@ -38,15 +38,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  *
  * ## Runtime-only-verifiable
  *
- * The `Entity.changeLookDirection(double, double)` target is verified against the named 1.21.11 jar
- * (`public void changeLookDirection(double, double)` on `net.minecraft.world.entity.Entity`; mojmap `turn`).
+ * The target is verified against `minecraft-merged-deobf-26.3.jar`: yarn's
+ * `Entity.changeLookDirection(double, double)` is now `Entity.turn(double, double)` (public, single
+ * overload — javap-confirmed), and `MouseHandler` line 343 calls exactly it for mouse motion.
  * `defaultRequire: 1` means a mismatch fails launch — the build can't confirm mixin-apply, only a live
  * client run can.
  */
 @Mixin(Entity::class)
 class FreecamEntityMixin {
 
-    @Inject(method = ["changeLookDirection"], at = [At("HEAD")], cancellable = true)
+    @Inject(method = ["turn"], at = [At("HEAD")], cancellable = true)
     // Mixin merges this class into Entity at runtime, so `this as Entity` (below) is sound at
     // runtime even though Kotlin's static analysis can't see the merge and warns it can never
     // succeed. Suppress that false positive rather than weakening the cast.
