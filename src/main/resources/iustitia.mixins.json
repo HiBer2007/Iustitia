@@ -10,7 +10,6 @@
     "ArmorStandEntityRendererMixin",
     "EntityRenderStateAccessor",
     "EntityRendererMixin",
-    "LivingEntityRendererAccessor",
     "CameraMixin",
     "PlayerListHudMixin",
     "SectionRenderStateMixin",
