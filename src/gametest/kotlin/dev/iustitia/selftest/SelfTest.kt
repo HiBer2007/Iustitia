@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import net.minecraft.world.item.component.SwingAnimation
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.core.BlockPos
@@ -82,7 +83,7 @@ object SelfTest {
          */
         fun teleportTo(x: Double, y: Double, z: Double) {
             ClientThread.runOnClient { _ ->
-                entity?.setPosition(x, y, z)
+                entity?.setPos(x, y, z)
             }
         }
 
@@ -110,8 +111,8 @@ object SelfTest {
 
         /**
          * Present this bot to the tab list with [mode] (CREATIVE / SPECTATOR), through the
-         * real consumer path: a [PlayerListS2CPacket.Entry] dispatched to
-         * `ClientPlayNetworkHandler.onPlayerList` on the client thread, exactly where the
+         * real consumer path: a [ClientboundPlayerInfoUpdatePacket.Entry] dispatched to
+         * `ClientPacketListener.handlePlayerInfoUpdate` on the client thread, exactly where the
          * server's rebroadcast would land it. The packet's entry list is otherwise only
          * settable from server-side objects or wire bytes, so the test fills it via one
          * reflective field write (confined to this harness-only source set). This exercises
@@ -126,7 +127,7 @@ object SelfTest {
          */
         fun gameMode(mode: net.minecraft.world.level.GameType) {
             ClientThread.runOnClient { mc ->
-                val handler = mc.networkHandler ?: error("no network handler -- create the gametest world first")
+                val handler = mc.connection ?: error("no network handler -- create the gametest world first")
                 val profile = com.mojang.authlib.GameProfile(uuid, name)
                 val entry = net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.Entry(
                     uuid, profile, true, 0, mode, null, true, 0, null,
@@ -142,8 +143,8 @@ object SelfTest {
                     .getDeclaredField("entries")
                 field.isAccessible = true
                 field.set(packet, listOf(entry))
-                handler.onPlayerList(packet)
-                check(handler.getPlayerListEntry(uuid)?.gameMode == mode) {
+                handler.handlePlayerInfoUpdate(packet)
+                check(handler.getPlayerInfo(uuid)?.gameMode == mode) {
                     "tab-list game-mode injection failed for $name (wanted $mode)"
                 }
             }
@@ -153,8 +154,8 @@ object SelfTest {
         fun look(yaw: Float, pitch: Float) {
             ClientThread.runOnClient { _ ->
                 val e = entity ?: return@runOnClient
-                e.setYaw(yaw); e.setPitch(pitch)
-                e.bodyYaw = yaw; e.headYaw = yaw
+                e.setYRot(yaw); e.setXRot(pitch)
+                e.setYBodyRot(yaw); e.setYHeadRot(yaw)
             }
         }
 
@@ -182,7 +183,7 @@ object SelfTest {
                         animationId = 0,
                     )
                 )
-                entity?.swingHand(InteractionHand.MAIN_HAND)
+                entity?.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, true)
             }
         }
 
@@ -264,18 +265,18 @@ object SelfTest {
 
         /** Sneak metadata (the tracker polls `isSneaking`; sprint-while-sneaking is a cheat). */
         fun sneak(on: Boolean) {
-            ClientThread.runOnClient { _ -> try { entity?.setSneaking(on) } catch (_: Throwable) { } }
+            ClientThread.runOnClient { _ -> try { entity?.setShiftKeyDown(on) } catch (_: Throwable) { } }
         }
 
         /**
          * Glide (elytra) metadata. The tracker polls `isGliding`, which vanilla backs with the
          * GLIDING entity flag, so entering the glide through the same public API the game uses
-         * (`PlayerEntity.startGliding` / `stopGliding`) presents exactly the state the server
-         * would rebroadcast when a player deploys or stows an elytra.
+         * (`Player.startFallFlying` / `LivingEntity.stopFallFlying`) presents exactly the state
+         * the server would rebroadcast when a player deploys or stows an elytra.
          */
         fun gliding(on: Boolean) {
             ClientThread.runOnClient { _ ->
-                try { if (on) entity?.startGliding() else entity?.stopGliding() } catch (_: Throwable) { }
+                try { if (on) entity?.startFallFlying() else entity?.stopFallFlying() } catch (_: Throwable) { }
             }
         }
 
@@ -287,14 +288,14 @@ object SelfTest {
         /** Hold [stack] in the main hand; the tracker reads that stack's use action. */
         fun hold(stack: ItemStack) {
             ClientThread.runOnClient { _ ->
-                try { entity?.equipStack(EquipmentSlot.MAINHAND, stack) } catch (_: Throwable) { }
+                try { entity?.setItemSlot(EquipmentSlot.MAINHAND, stack) } catch (_: Throwable) { }
             }
         }
 
         /** Wear [stack] in [slot] (chest for an elytra, head for a helmet). */
         fun equip(slot: EquipmentSlot, stack: ItemStack) {
             ClientThread.runOnClient { _ ->
-                try { entity?.equipStack(slot, stack) } catch (_: Throwable) { }
+                try { entity?.setItemSlot(slot, stack) } catch (_: Throwable) { }
             }
         }
 
@@ -304,17 +305,17 @@ object SelfTest {
          * tracker derives `isUsingConsumable` (EAT/DRINK) or `isBlocking` (BLOCK), so the drive
          * that reproduces "eating" or "shield up" is exactly the metadata pair a real client sends.
          *
-         * Both halves of that pair are needed and `setCurrentHand` only does one of them, which is
-         * a real trap: `LivingEntity.setCurrentHand` writes the live tracked-data
-         * `USING_ITEM` bit **only server-side** (`if (!world.isClient())`), so on a client-side
-         * `OtherClientPlayerEntity` it sets `activeItemStack` and leaves `isUsingItem()` false. A
+         * Both halves of that pair are needed and `startUsingItem` only does one of them, which is
+         * a real trap: `LivingEntity.startUsingItem` writes the live tracked-data
+         * `USING_ITEM` bit **only server-side** (`if (!level().isClientSide())`), so on a client-side
+         * `RemotePlayer` it sets `useItem` and leaves `isUsingItem()` false. A
          * *real* observant client only ever sees that bit because the server rebroadcasts the
          * `LivingEntity` metadata byte, so the harness must perform the same write the metadata
          * packet performs. See [setUsingItemBit].
          */
         fun startUsing() {
             ClientThread.runOnClient { _ ->
-                try { entity?.setCurrentHand(InteractionHand.MAIN_HAND) } catch (_: Throwable) { }
+                try { entity?.startUsingItem(InteractionHand.MAIN_HAND) } catch (_: Throwable) { }
                 setUsingItemBit(true)
             }
         }
@@ -332,7 +333,7 @@ object SelfTest {
          * rebroadcasts in its entity-metadata packet when a player starts or stops eating,
          * drinking or blocking, and the byte `LivingEntity.isUsingItem()` reads back.
          *
-         * `setLivingFlag(int, boolean)` is `protected`, and no public API reaches the tracked
+         * `setLivingEntityFlag(int, boolean)` is `protected`, and no public API reaches the tracked
          * data from outside the entity, so this is done reflectively. That is confined to the
          * harness: this class only ever runs inside the gametest dev runtime (never in the shipped
          * mod), the call is on the client thread, and every failure is swallowed -- if the write
@@ -342,7 +343,7 @@ object SelfTest {
             val e = entity ?: return
             try {
                 val m = net.minecraft.world.entity.LivingEntity::class.java.getDeclaredMethod(
-                    "setLivingFlag", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+                    "setLivingEntityFlag", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
                 )
                 m.isAccessible = true
                 m.invoke(e, LIVING_FLAG_USE_ITEM, on)
@@ -352,7 +353,7 @@ object SelfTest {
 
         /**
          * The `LivingEntity` living-flags bit the server sets while a player is using an item
-         * (`setCurrentHand` writes `setLivingFlag(1, true)` on the server; the matching
+         * (`startUsingItem` writes `setLivingEntityFlag(1, true)` on the server; the matching
          * `OFF_HAND` bit is 2). Kept as a named constant so the reflection above reads as intent.
          */
         private val LIVING_FLAG_USE_ITEM = 1
@@ -463,11 +464,11 @@ object SelfTest {
         fun bot(name: String, x: Double, y: Double, z: Double): BotHandle {
             val unique = if (bots.any { it.name == name }) "$name-${bots.size}" else name
             val handle = ClientThread.computeOnClient { mc ->
-                val world = mc.world ?: error("no client world -- create the gametest world first")
+                val world = mc.level ?: error("no client world -- create the gametest world first")
                 val uuid = UUID.nameUUIDFromBytes("iustitia-selftest-$unique".toByteArray())
                 val profile = com.mojang.authlib.GameProfile(uuid, unique)
                 val e = net.minecraft.client.player.RemotePlayer(world, profile)
-                e.setPosition(x, y, z)
+                e.setPos(x, y, z)
                 try { e.setOnGround(false) } catch (_: Throwable) { }
                 world.addEntity(e)
                 val h = BotHandle(unique, uuid)
@@ -614,19 +615,19 @@ object SelfTest {
         /** Force one block in the client world (harness-side world surgery). */
         fun place(x: Int, y: Int, z: Int, block: Block) {
             ClientThread.runOnClient { mc ->
-                val w = mc.world ?: return@runOnClient
-                try { w.setBlockState(BlockPos(x, y, z), block.defaultState, 3) } catch (_: Throwable) { }
+                val w = mc.level ?: return@runOnClient
+                try { w.setBlock(BlockPos(x, y, z), block.defaultBlockState(), 3) } catch (_: Throwable) { }
             }
         }
 
         /** Force an inclusive block region -- walls, floors, pools and pockets. */
         fun fill(x1: Int, y1: Int, z1: Int, x2: Int, y2: Int, z2: Int, block: Block) {
             ClientThread.runOnClient { mc ->
-                val w = mc.world ?: return@runOnClient
+                val w = mc.level ?: return@runOnClient
                 for (x in minOf(x1, x2)..maxOf(x1, x2)) {
                     for (y in minOf(y1, y2)..maxOf(y1, y2)) {
                         for (z in minOf(z1, z2)..maxOf(z1, z2)) {
-                            try { w.setBlockState(BlockPos(x, y, z), block.defaultState, 3) } catch (_: Throwable) { }
+                            try { w.setBlock(BlockPos(x, y, z), block.defaultBlockState(), 3) } catch (_: Throwable) { }
                         }
                     }
                 }
@@ -748,7 +749,7 @@ object SelfTest {
             }
 
             ctx.worldBuilder().create().use { world ->
-                world.getClientWorld().waitForChunksRender()
+                world.connection.waitForChunksRender()
                 val builder = ScenarioBuilder(ctx)
                 val scenarioStart = System.currentTimeMillis()
                 AssertionTally.reset()
@@ -847,7 +848,7 @@ object SelfTest {
             val graceDeadline = System.currentTimeMillis() + SERVER_TEARDOWN_GRACE_MS
             var intervened = false
             while (System.currentTimeMillis() < deadline) {
-                if (!ClientThread.computeOnClient { mc -> mc.server != null || mc.isIntegratedServerRunning }) return
+                if (!ClientThread.computeOnClient { mc -> mc.singleplayerServer != null }) return
                 if (!intervened && System.currentTimeMillis() >= graceDeadline) {
                     intervened = true
                     println("[iustitia-selftest] WARN teardown barrier: server still running after '$scenarioName' closed -- forcing disconnect")
@@ -1032,7 +1033,7 @@ object SelfTest {
      * and run seventy scenarios is unusable for whoever is sitting next to it -- and the entire
      * point of this harness is that it runs unattended, repeatedly, while someone works. Modern
      * Minecraft has no `--nosound` launch argument, so the mute goes through the same API the sound
-     * options screen uses: every [SoundCategory] volume is driven to 0.0, then the live mixer is
+     * options screen uses: every [SoundSource] volume is driven to 0.0, then the live mixer is
      * refreshed and whatever is already playing is stopped. The refresh-and-stop matters because a
      * sound instance that has already started would otherwise keep playing out its own length.
      *
@@ -1047,16 +1048,16 @@ object SelfTest {
                 ClientThread.runOnClient { mc ->
                     try {
                         val categories = SoundSource.values()
-                        val volumes = categories.map { mc.options.getSoundVolumeOption(it) }
+                        val volumes = categories.map { mc.options.getSoundSourceOptionInstance(it) }
                         // Idempotent: this is called from both the entrypoint (before anything that
                         // can throw) and runAll (API-level guarantee), and the second call must not
                         // re-log or re-stop anything. If every category is already mute, we are done.
-                        if (volumes.all { it.value == 0.0 }) return@runOnClient
-                        for (volume in volumes) volume.setValue(0.0)
+                        if (volumes.all { it.get() == 0.0 }) return@runOnClient
+                        for (volume in volumes) volume.set(0.0)
                         val sounds = mc.soundManager
-                        for (category in categories) sounds.refreshSoundVolumes(category)
-                        sounds.stopAll()
-                        mc.musicTracker.stop()
+                        for (category in categories) sounds.refreshCategoryVolume(category)
+                        sounds.stop()
+                        mc.musicManager.stopPlaying()
                         println(
                             "[iustitia-selftest] audio muted: ${categories.size} SoundCategory " +
                                 "volumes = 0.0, mixer refreshed, playing sounds stopped (in-memory only)"

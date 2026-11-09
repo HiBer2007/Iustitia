@@ -90,7 +90,7 @@ object ReplayScenarios {
             }
             b.runFor(80)
 
-            val before = ClientThread.computeOnClient { mc -> mc.options.perspective }
+            val before = ClientThread.computeOnClient { mc -> mc.options.cameraType }
             ClientThread.runOnClient { _ ->
                 val window = ReplayBuffer.snapshot(4, dev.iustitia.Iustitia.tickCounter)
                 check(ReplayState.start(window, bot.uuid, ReplayState.SPEED_FULL, true, false, true)) {
@@ -100,13 +100,13 @@ object ReplayScenarios {
             b.runFor(4)
 
             ClientThread.runOnClient { _ -> ReplayState.setCameraMode(ReplayState.CameraMode.POV) }
-            val pov = ClientThread.computeOnClient { mc -> mc.options.perspective }
+            val pov = ClientThread.computeOnClient { mc -> mc.options.cameraType }
             check(pov == net.minecraft.client.CameraType.FIRST_PERSON) {
                 "POV camera mode did not force first-person (perspective=$pov)"
             }
 
             ClientThread.runOnClient { _ -> ReplayState.setCameraMode(ReplayState.CameraMode.FREE) }
-            val restored = ClientThread.computeOnClient { mc -> mc.options.perspective }
+            val restored = ClientThread.computeOnClient { mc -> mc.options.cameraType }
             check(restored == before) {
                 "leaving POV left the perspective at $restored instead of restoring $before"
             }
