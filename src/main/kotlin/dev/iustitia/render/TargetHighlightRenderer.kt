@@ -2,11 +2,10 @@ package dev.iustitia.render
 
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.client.player.RemotePlayer
 import net.minecraft.client.renderer.rendertype.RenderTypes
-import net.minecraft.client.renderer.ShapeRenderer
 import net.minecraft.world.phys.EntityHitResult
 import net.minecraft.world.phys.shapes.Shapes
 
@@ -16,65 +15,70 @@ import net.minecraft.world.phys.shapes.Shapes
  * writes depth, so the box is occluded by intervening walls — no wallhack, consistent with the
  * nametag-visibility-respecting philosophy).
  *
- * Registered on `WorldRenderEvents.AFTER_ENTITIES`, which fires on the render thread after entities
- * are drawn — the canonical place for world-space overlays, so the box composites correctly against
- * entities (and is occluded by closer geometry).
+ * Registered on [LevelRenderEvents.COLLECT_SUBMITS], the 26.3 replacement for the removed
+ * `WorldRenderEvents.AFTER_ENTITIES`: it fires once per frame while the level's submit nodes are being
+ * collected, which is the canonical place for world-space overlays — the box therefore composites
+ * against entities and is occluded by closer geometry exactly like vanilla's own block outline.
  *
  * ## Positioning
  *
- * `WorldRenderContext.matrices()` at AFTER_ENTITIES is the camera-rotation-only view matrix (vanilla
- * applies the camera TRANSLATION per-vertex via the camera-pos offset it passes to its outline
- * draw calls — confirmed by `WorldRenderer.renderTargetBlockOutline` passing `camera.getPos()` to
- * `drawBlockOutline`). So translating the matrix by `-cameraPos` puts world-coord geometry on
- * screen, exactly as entity renderers position themselves via `(x - cameraX, …)`. We then draw the
- * entity's world-coord [net.minecraft.world.entity.Entity.getBoundingBox] with no extra offset.
+ * The [net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext.poseStack] handed to
+ * `COLLECT_SUBMITS` is a **world-origin identity** matrix: vanilla's own `LevelRenderer.submitFeatures`
+ * creates a fresh `PoseStack` there and translates each entity/block by `(pos - cameraPos)` itself.
+ * So we translate by the entity's bounding-box minimum minus the camera position
+ * (`levelState().cameraRenderState.pos`) and then hand [OrderedSubmitNodeCollector.submitShapeOutline]
+ * a box whose origin is local to that translate — the same "camera-relative origin" discipline vanilla
+ * uses, just spelled out here instead of being pre-applied.
  *
  * ## Color
  *
- * `VertexRendering.drawOutline` passes a single `int` to `VertexConsumer.color(int)` (ARGB), so the
- * colors below are full-alpha ARGB (0xFFRRGGBB) — robust whether the helper packs its own alpha or
- * treats the int as already-ARGB. Tier-colored: red/yellow always drawn; green only when the user
+ * [OrderedSubmitNodeCollector.submitShapeOutline] takes the color as one ARGB int, so the colors below
+ * are full-alpha ARGB (0xFFRRGGBB). Note that the collector routes a full-alpha outline into the
+ * *opaque* feature phase (vanilla's own block outline does the same); depth testing is unchanged.
+ * Tier-colored: red/yellow always drawn; green only when the user
  * opted into green cues (`nametagGreenEnabled`), so clean players aren't boxed by default.
  *
- * Runtime-only-verifiable: a build cannot confirm the box lands on the entity (depends on the
- * matrices being rotation-only, which the vanilla precedent establishes but cannot be build-proven).
- * If the box is offset/wrong-tinted, the translate offset or color packing is a one-line fix.
+ * Runtime-only-verifiable: a build cannot confirm the box lands on the entity. If the box is
+ * offset/wrong-tinted, the translate offset or color packing is a one-line fix.
  */
 object TargetHighlightRenderer {
 
     fun register() {
         try {
-            WorldRenderEvents.AFTER_ENTITIES.register(WorldRenderEvents.AfterEntities { ctx ->
+            LevelRenderEvents.COLLECT_SUBMITS.register(LevelRenderEvents.CollectSubmits { ctx ->
                 try {
-                    if (!ConfigManager.config.targetHighlight) return@AfterEntities
+                    if (!ConfigManager.config.targetHighlight) return@CollectSubmits
                     val mc = Minecraft.getInstance()
-                    val hit = mc.crosshairTarget
-                    if (hit !is EntityHitResult) return@AfterEntities
+                    val hit = mc.hitResult
+                    if (hit !is EntityHitResult) return@CollectSubmits
                     val entity = hit.entity
-                    if (entity !is RemotePlayer) return@AfterEntities
+                    if (entity !is RemotePlayer) return@CollectSubmits
                     val self = mc.player
-                    if (self != null && entity.uuid == self.uuid) return@AfterEntities
+                    if (self != null && entity.uuid == self.uuid) return@CollectSubmits
 
                     val tier = FlagHistory.tierFor(entity.uuid)
-                    if (tier == FlagHistory.Tier.GREEN && !ConfigManager.config.nametagGreenEnabled) return@AfterEntities
+                    if (tier == FlagHistory.Tier.GREEN && !ConfigManager.config.nametagGreenEnabled) return@CollectSubmits
                     val color = when (tier) {
                         FlagHistory.Tier.GREEN -> GREEN
                         FlagHistory.Tier.YELLOW -> YELLOW
                         FlagHistory.Tier.RED -> RED
                     }
 
-                    val camPos = ctx.gameRenderer().camera.getCameraPos()
-                    val matrices = ctx.matrices()
-                    val lines = ctx.consumers().getBuffer(RenderTypes.lines())
-                    matrices.push()
-                    // Rotation-only view matrix → translate by -cameraPos to draw world-coord geometry.
-                    matrices.translate(-camPos.x, -camPos.y, -camPos.z)
-                    ShapeRenderer.drawOutline(
-                        matrices, lines,
-                        Shapes.cuboid(entity.getBoundingBox()),
-                        0.0, 0.0, 0.0, color, 1.0f,
+                    val camPos = ctx.levelState().cameraRenderState.pos
+                    val bb = entity.boundingBox
+                    val matrices = ctx.poseStack()
+                    matrices.pushPose()
+                    // World-origin identity stack → translate to the entity's box in camera space.
+                    matrices.translate(bb.minX - camPos.x, bb.minY - camPos.y, bb.minZ - camPos.z)
+                    ctx.submitNodeCollector().submitShapeOutline(
+                        matrices,
+                        Shapes.create(0.0, 0.0, 0.0, bb.xsize, bb.ysize, bb.zsize),
+                        RenderTypes.lines(),
+                        color,
+                        1.0f,
+                        false,
                     )
-                    matrices.pop()
+                    matrices.popPose()
                 } catch (_: Throwable) {
                     // Fail-open: a render error never crashes the client; the box just doesn't draw.
                 }
