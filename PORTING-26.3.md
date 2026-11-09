@@ -102,16 +102,23 @@ Other renamed members worth knowing: `PoseStack.push/pop/peek/multiply` → `pus
 
 ## New display features in this port
 
-- **Foot trail** (`FootTrailRenderer`): a short trail of small tier-colored wireframe squares at each
+- **Foot trail** (`FootTrailRenderer`): a short trail of small tier-colored wireframe cubes at each
   tracked player's feet, one per recorded tick, faded by age. Green (clean) players are included by
   default (`footTrailGreen`), because a not-yet-flagged player is exactly who a moderator wants to
   watch. Config: `footTrail`, `footTrailGreen`, `footTrailTicks` (1–40).
-- **Floating nameplates** (`NameplateRenderer`): `[+]` / `[!]` / `[X]` plus the player name above a
-  tracked head — but only as a *supplement*: while the server lets the vanilla nametag render (the
-  normal standing case) the tier already shows through the nametag prefix, so the custom plate is
-  skipped to avoid a doubled label. The plate appears for the one case vanilla hides the name — a
-  discrete (sneaking) player — and there only for yellow/red tiers. Red plates are drawn at full
-  brightness with a red outline ("glow"). Config: `nameplates`, `nameplateRedGlow`.
+  **26.3 gotcha that cost a bug:** `SubmitNodeCollector.submitShapeOutline` stores the pose and
+  transforms the shape's vertices later, i.e. the shape must be in the pose's *local* space. The
+  first port translated the shared pose by `-cameraPos` and passed world-space boxes, which applies
+  the camera offset twice and puts every trail square off-screen. Each sample now gets its own
+  camera-relative translate and a local box.
+- **Floating nameplates** (`NameplateRenderer`): `[+]` / `[!]` plus the player's **native display
+  name** (team prefix and rank colours included) above a tracked head — but only as a *supplement*:
+  while the server lets the vanilla nametag render (the normal standing case) the tier already shows
+  through the nametag prefix, so the custom plate is skipped to avoid a doubled label. The plate
+  appears for the one case vanilla hides the name — a discrete (sneaking) player — and there only
+  for yellow/red tiers. Red plates carry the `[!]` marker plus a full-plate highlight (a translucent
+  red band behind the text and a red outline) at full brightness; yellow plates are plain.
+  Config: `nameplates`, `nameplateRedGlow`.
 - Both are render-only, depth-tested, fail-open, and have en_us + zh_cn strings.
 - **Preset note:** the everyday profiles (`standard` / `lenient` / `strict` / `moderation`) now keep
   `tabListBadge`, `footTrail`, `footTrailGreen`, `nameplates` and `nameplateRedGlow` **on**. They used
