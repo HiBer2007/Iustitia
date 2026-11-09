@@ -27,10 +27,10 @@ Detects **both 1.8-era and modern-era cheats** by passively observing *other* pl
   glance. Clean (green `[+]`) players are included by default: a not-yet-flagged player is exactly
   who a moderator wants to watch. Config: *Foot trail*, *Trail on clean players*, *Trail length*.
 - **Floating nameplates.** `[+]` / `[!]` / `[X]` plus the player name above every tracked head, on
-  top of the vanilla nametag prefix. Yellow/red plates stay visible **even while the player sneaks**
-  (vanilla hides its own nametag then), and red plates are drawn at full brightness with a red
-  outline so a confirmed cheater reads as glowing. Config: *Floating nameplates*, *Glowing red
-  nameplates*.
+  top of the vanilla nametag prefix, but only when vanilla hides its own nametag (a sneak) so the
+  label is never doubled: yellow/red plates then stay visible **even while the player sneaks**, and
+  red plates are drawn at full brightness with a red outline so a confirmed cheater reads as
+  glowing. Config: *Floating nameplates*, *Glowing red nameplates*.
 - **Chinese localisation** ships complete (`zh_cn.json`, every key translated) including the new
   options above.
 

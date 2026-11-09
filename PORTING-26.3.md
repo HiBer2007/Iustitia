@@ -106,16 +106,28 @@ Other renamed members worth knowing: `PoseStack.push/pop/peek/multiply` → `pus
   tracked player's feet, one per recorded tick, faded by age. Green (clean) players are included by
   default (`footTrailGreen`), because a not-yet-flagged player is exactly who a moderator wants to
   watch. Config: `footTrail`, `footTrailGreen`, `footTrailTicks` (1–40).
-- **Floating nameplates** (`NameplateRenderer`): `[+]` / `[!]` / `[X]` plus the player name above every
-  tracked head. Yellow/red plates stay visible while the player sneaks (vanilla hides its own
-  nametag then); red plates are drawn at full brightness with a red outline ("glow"). Config:
-  `nameplates`, `nameplateRedGlow`.
+- **Floating nameplates** (`NameplateRenderer`): `[+]` / `[!]` / `[X]` plus the player name above a
+  tracked head — but only as a *supplement*: while the server lets the vanilla nametag render (the
+  normal standing case) the tier already shows through the nametag prefix, so the custom plate is
+  skipped to avoid a doubled label. The plate appears for the one case vanilla hides the name — a
+  discrete (sneaking) player — and there only for yellow/red tiers. Red plates are drawn at full
+  brightness with a red outline ("glow"). Config: `nameplates`, `nameplateRedGlow`.
 - Both are render-only, depth-tested, fail-open, and have en_us + zh_cn strings.
+- **Preset note:** the everyday profiles (`standard` / `lenient` / `strict` / `moderation`) now keep
+  `tabListBadge`, `footTrail`, `footTrailGreen`, `nameplates` and `nameplateRedGlow` **on**. They used
+  to ship with the tab badge (and every world overlay) off, which made a fresh install look as if the
+  features were broken. An existing `config/iustitia.json` keeps whatever it saved, so toggle the
+  option in `/ius config` or re-apply the preset (`/ius preset standard`).
 
 ## Verification status
 
-- `gradlew build` / `compileKotlin`: see the last section of the branch's history.
-- In-game verification (mixin apply, rendering in 26.3, the new overlays) is **runtime-only**: mixin
-  target strings and the new render phase cannot be proven by a build. The automated client gametest
-  harness (`src/gametest`, `gradlew runClientGameTest`) is wired in the build but has not been ported
-  to 26.3 yet — treat it as the next step before release.
+- `gradlew build`: green — `compileKotlin`, `compileGametestKotlin`, 89 JVM unit tests, jar.
+- Dev client launches on 26.3: all 16 mixins apply (verified with `-Dmixin.debug.verbose=true`), the
+  setup wizard renders (Chinese), a flat world loads and renders.
+- Automated live tests: `gradlew runClientGameTest` runs on 26.3 after the harness port. The
+  `reach`/`CHEAT` slice passes 6/6. One harness fix was required for 26.3: client-side bots must be
+  given an explicit entity id (`Entity.getId()` throws while the id is 0).
+- Still runtime-only (cannot be proven by a build): the exact on-screen placement of the new overlays
+  and the freecam/replay camera overrides. Those paths are fail-open and were exercised by the
+  in-world launch, but a visual pass on a real server is still worth doing before release.
+
