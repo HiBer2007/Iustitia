@@ -4,15 +4,35 @@
 
 # Iustitia
 
-A purely client-sided anticheat for Minecraft Java **1.21.11** (Fabric).
+A purely client-sided anticheat for Minecraft Java **26.3** (Fabric).
 
-Detects **both 1.8-era and 1.21.11-era cheats** by passively observing *other* players through the packets the server already rebroadcasts to you. No server component, no network transmission, no outgoing packets.
+Detects **both 1.8-era and modern-era cheats** by passively observing *other* players through the packets the server already rebroadcasts to you. No server component, no network transmission, no outgoing packets.
 
 **Local-only alerts and overlays. No bans. No interference. No outgoing packets.**
 
 </div>
 
 ---
+
+## What's new in 1.5.0 — Minecraft 26.3
+
+- **Ported to Minecraft 26.3.** Java 25, Fabric Loader 0.20.1, Fabric API 0.165.2+26.3, Kotlin 2.4.21,
+  Loom 1.19.4. 26.3 ships an unobfuscated game jar, so the mod now builds against official Mojang
+  names with no mappings or remap step. The whole source tree was migrated (names, rendering,
+  screens, HUD, commands, input, mixins); detection logic, thresholds and file formats are unchanged.
+  See [PORTING-26.3.md](PORTING-26.3.md) for the full change list and the handful of documented
+  approximations.
+- **Foot trail.** Each tracked player now leaves a short trail of small tier-colored wireframe
+  squares at their feet, one per recorded tick, fading with age — a movement path you can read at a
+  glance. Clean (green `[+]`) players are included by default: a not-yet-flagged player is exactly
+  who a moderator wants to watch. Config: *Foot trail*, *Trail on clean players*, *Trail length*.
+- **Floating nameplates.** `[+]` / `[!]` / `[X]` plus the player name above every tracked head, on
+  top of the vanilla nametag prefix. Yellow/red plates stay visible **even while the player sneaks**
+  (vanilla hides its own nametag then), and red plates are drawn at full brightness with a red
+  outline so a confirmed cheater reads as glowing. Config: *Floating nameplates*, *Glowing red
+  nameplates*.
+- **Chinese localisation** ships complete (`zh_cn.json`, every key translated) including the new
+  options above.
 
 ## What's new in 1.4.0
 
