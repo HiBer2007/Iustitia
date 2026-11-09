@@ -79,37 +79,42 @@ object FootTrailRenderer {
         val now = Iustitia.tickCounter
         val lines = RenderTypes.lines()
 
-        pose.pushPose()
-        try {
-            pose.translate(-camPos.x, -camPos.y, -camPos.z)
-            for (tp in players) {
-                try {
-                    val tier = tp.tier
-                    if (tier == FlagHistory.Tier.GREEN && !cfg.footTrailGreen) continue
-                    val rgb = when (tier) {
-                        FlagHistory.Tier.RED -> RED
-                        FlagHistory.Tier.YELLOW -> YELLOW
-                        FlagHistory.Tier.GREEN -> GREEN
-                    }
-                    var index = 0
-                    tp.ring.forEachRecent(ticks, now) { x, y, z ->
+        for (tp in players) {
+            try {
+                val tier = tp.tier
+                if (tier == FlagHistory.Tier.GREEN && !cfg.footTrailGreen) continue
+                val rgb = when (tier) {
+                    FlagHistory.Tier.RED -> RED
+                    FlagHistory.Tier.YELLOW -> YELLOW
+                    FlagHistory.Tier.GREEN -> GREEN
+                }
+                var index = 0
+                tp.ring.forEachRecent(ticks, now) { x, y, z ->
+                    // 26.3: `submitShapeOutline` takes the shape in the pose's LOCAL space (the
+                    // collector stores the pose and transforms the shape vertices later), so each
+                    // square is submitted under its own camera-relative translate. Translating the
+                    // shared pose by -camPos and passing world coordinates instead double-applies the
+                    // camera offset and puts every square off-screen — that was the "trail never
+                    // shows" bug.
+                    pose.pushPose()
+                    try {
+                        pose.translate(x - camPos.x, y - camPos.y, z - camPos.z)
                         // Newest sample (index 0) is the most opaque; the tail fades out.
                         val t = if (ticks <= 1) 0f else (index.toFloat() / (ticks - 1)).coerceIn(0f, 1f)
                         val alpha = (ALPHA_NEW + (ALPHA_OLD - ALPHA_NEW) * t).toInt().coerceIn(0, 255)
                         val color = (alpha shl 24) or (rgb and 0x00FFFFFF)
-                        val box = AABB(
-                            x - HALF, y + LIFT, z - HALF,
-                            x + HALF, y + LIFT, z + HALF,
-                        )
+                        // A real little cube at the feet (not a flat square) so it reads while
+                        // looking down at a walking player.
+                        val box = AABB(-HALF, LIFT, -HALF, HALF, LIFT + HALF * 2.0, HALF)
                         collector.submitShapeOutline(pose, Shapes.create(box), lines, color, 1.0f, false)
-                        index++
+                    } finally {
+                        pose.popPose()
                     }
-                } catch (_: Throwable) {
-                    // skip one player's trail, keep the rest
+                    index++
                 }
+            } catch (_: Throwable) {
+                // skip one player's trail, keep the rest
             }
-        } finally {
-            pose.popPose()
         }
     }
 }

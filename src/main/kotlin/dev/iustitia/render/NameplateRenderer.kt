@@ -59,6 +59,9 @@ object NameplateRenderer {
     /** Outline for the red "glow": a bright red halo around every glyph. */
     private const val RED_OUTLINE = 0xFFFF2020.toInt()
 
+    /** Full-plate red highlight drawn behind the text on a red-tier plate. */
+    private const val RED_BACKGROUND = 0xB0300000.toInt()
+
     fun register() {
         try {
             LevelRenderEvents.COLLECT_SUBMITS.register(LevelRenderEvents.CollectSubmits { ctx ->
@@ -114,13 +117,19 @@ object NameplateRenderer {
                     val color: Int
                     val glyph: String
                     when (tier) {
-                        FlagHistory.Tier.RED -> { color = RED; glyph = "X" }
+                        // Red already gets the full-plate highlight below, so the marker only needs
+                        // the warning glyph (no second 'X').
+                        FlagHistory.Tier.RED -> { color = RED; glyph = "!" }
                         FlagHistory.Tier.YELLOW -> { color = YELLOW; glyph = "!" }
                         FlagHistory.Tier.GREEN -> { color = GREEN; glyph = "+" }
                     }
-                    val name = try { entity.gameProfile.name } catch (_: Throwable) { null }
-                        ?: try { entity.name.string } catch (_: Throwable) { "?" }
-                    val label = Component.literal("[$glyph] $name")
+                    // The native display name (team prefix + rank colours included) is what the user
+                    // reads in every other UI; our plate only prepends the tier glyph to it.
+                    val native = try { entity.displayName } catch (_: Throwable) {
+                        try { Component.literal(entity.name.string) } catch (_: Throwable) { Component.empty() }
+                    }
+                    val marker = Component.literal("[$glyph] ").withStyle { it.withColor(color) }
+                    val label = Component.empty().append(marker).append(native)
                     // Full-bright text + a bright outline is the red "glow"; the other tiers stay
                     // plain colored text so the confirmed cheater is the one that stands out.
                     val outline = if (tier == FlagHistory.Tier.RED && cfg.nameplateRedGlow) RED_OUTLINE else 0
@@ -137,6 +146,14 @@ object NameplateRenderer {
                         pose.scale(SCALE, -SCALE, SCALE)
                         val text = label.visualOrderText
                         val w = font.width(text)
+                        // Red = a full highlight: a red band behind the whole plate, then the text
+                        // on top. Yellow/green plates stay plain so only suspects are boxed.
+                        if (tier == FlagHistory.Tier.RED && cfg.nameplateRedGlow) {
+                            collector.submitTextBackground(
+                                pose, -w / 2f - 2f, -1f, w / 2f + 2f, font.lineHeight + 1f,
+                                RED_BACKGROUND, Font.DisplayMode.SEE_THROUGH, FULL_LIGHT,
+                            )
+                        }
                         collector.submitText(
                             pose, -w / 2f, 0f, text, true,
                             Font.DisplayMode.SEE_THROUGH, FULL_LIGHT, color, 0, outline,
