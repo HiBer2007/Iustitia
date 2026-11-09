@@ -11,24 +11,24 @@ import dev.iustitia.event.VelocitySignal
 import dev.iustitia.protocol.ProtocolDetector
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.ServerTickRate
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.ClientPlayNetworkHandler
-import net.minecraft.entity.Entity
-import net.minecraft.entity.effect.StatusEffects
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket
-import net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket
-import net.minecraft.network.packet.s2c.play.DamageTiltS2CPacket
-import net.minecraft.network.packet.s2c.play.EntityAnimationS2CPacket
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket
-import net.minecraft.network.packet.s2c.play.EntityStatusEffectS2CPacket
-import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket
-import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket
-import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket
-import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket
-import net.minecraft.network.packet.s2c.play.PlayerRespawnS2CPacket
-import net.minecraft.network.packet.s2c.play.ProfilelessChatMessageS2CPacket
-import net.minecraft.network.packet.s2c.play.RemoveEntityStatusEffectS2CPacket
-import net.minecraft.network.packet.s2c.play.WorldTimeUpdateS2CPacket
+import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientPacketListener
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.effect.MobEffects
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket
+import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket
+import net.minecraft.network.protocol.game.ClientboundHurtAnimationPacket
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket
+import net.minecraft.network.protocol.game.ClientboundUpdateMobEffectPacket
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket
+import net.minecraft.network.protocol.game.ClientboundLoginPacket
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket
+import net.minecraft.network.protocol.game.ClientboundDisguisedChatPacket
+import net.minecraft.network.protocol.game.ClientboundRemoveMobEffectPacket
+import net.minecraft.network.protocol.game.ClientboundSetTimePacket
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -42,26 +42,26 @@ import java.util.UUID
  * the live world, drops the local player + unknown entities, and publishes a signal
  * to the [Iustitia] bus. All bodies are fail-open.
  */
-@Mixin(ClientPlayNetworkHandler::class)
+@Mixin(ClientPacketListener::class)
 class ClientPlayNetworkHandlerMixin {
 
-    private fun world() = MinecraftClient.getInstance().world
+    private fun world() = Minecraft.getInstance().world
 
     private fun otherPlayer(id: Int): UUID? {
         val w = world() ?: return null
         val e: Entity = w.getEntityById(id) ?: return null
-        if (e === MinecraftClient.getInstance().player) return null
+        if (e === Minecraft.getInstance().player) return null
         return e.uuid
     }
 
     private fun otherPlayer(entity: Entity?): UUID? {
         if (entity == null) return null
-        if (entity === MinecraftClient.getInstance().player) return null
+        if (entity === Minecraft.getInstance().player) return null
         return entity.uuid
     }
 
     @Inject(method = ["onGameJoin"], at = [At("HEAD")])
-    private fun iustitia_onGameJoin(packet: GameJoinS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onGameJoin(packet: ClientboundLoginPacket, ci: CallbackInfo) {
         try {
             ProtocolDetector.redetect()
             // resetAll touches mc.options (HUD/perspective), does disk I/O and clears every
@@ -91,7 +91,7 @@ class ClientPlayNetworkHandlerMixin {
      * same-world death-respawn: preserve VL. Fail-open.
      */
     @Inject(method = ["onPlayerRespawn"], at = [At("HEAD")])
-    private fun iustitia_onPlayerRespawn(packet: PlayerRespawnS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onPlayerRespawn(packet: ClientboundRespawnPacket, ci: CallbackInfo) {
         try {
             val info = packet.commonPlayerSpawnInfo()
             val newSeed = info.seed()
@@ -120,19 +120,19 @@ class ClientPlayNetworkHandlerMixin {
      * measurement. The write is a single volatile long store. Fail-open.
      */
     @Inject(method = ["onWorldTimeUpdate"], at = [At("HEAD")])
-    private fun iustitia_onWorldTimeUpdate(packet: WorldTimeUpdateS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onWorldTimeUpdate(packet: ClientboundSetTimePacket, ci: CallbackInfo) {
         try {
             ServerTickRate.onWorldTimeUpdate()
         } catch (_: Throwable) {}
     }
 
     @Inject(method = ["onEntityAnimation"], at = [At("HEAD")])
-    private fun iustitia_onEntityAnimation(packet: EntityAnimationS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onEntityAnimation(packet: ClientboundAnimatePacket, ci: CallbackInfo) {
         try {
             // Only main/off-hand swings are attack swings; crit/enchanted-hit are hit effects.
             val anim = packet.animationId
-            if (anim != EntityAnimationS2CPacket.SWING_MAIN_HAND &&
-                anim != EntityAnimationS2CPacket.SWING_OFF_HAND
+            if (anim != ClientboundAnimatePacket.SWING_MAIN_HAND &&
+                anim != ClientboundAnimatePacket.SWING_OFF_HAND
             ) return
             val attacker = otherPlayer(packet.entityId) ?: return
             Iustitia.bus.publish(SwingSignal(attacker, Iustitia.tickCounter, System.nanoTime(), anim))
@@ -152,7 +152,7 @@ class ClientPlayNetworkHandlerMixin {
      * Fail-open. */
     @Inject(method = ["onBlockBreakingProgress"], at = [At("HEAD")])
     private fun iustitia_onBlockBreakingProgress(
-        packet: BlockBreakingProgressS2CPacket, ci: CallbackInfo
+        packet: ClientboundBlockDestructionPacket, ci: CallbackInfo
     ) {
         try {
             val digger = otherPlayer(packet.entityId) ?: return
@@ -163,7 +163,7 @@ class ClientPlayNetworkHandlerMixin {
     }
 
     @Inject(method = ["onEntityStatus"], at = [At("HEAD")])
-    private fun iustitia_onEntityStatus(packet: EntityStatusS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onEntityStatus(packet: ClientboundEntityEventPacket, ci: CallbackInfo) {
         try {
             val w = world() ?: return
             // EntityStatus byte 2: `KINETIC_ATTACK` (a mace smash) on 1.21, the living entity's
@@ -187,7 +187,7 @@ class ClientPlayNetworkHandlerMixin {
     }
 
     @Inject(method = ["onEntityDamage"], at = [At("HEAD")])
-    private fun iustitia_onEntityDamage(packet: EntityDamageS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onEntityDamage(packet: ClientboundDamageEventPacket, ci: CallbackInfo) {
         try {
             val victim = otherPlayer(packet.entityId) ?: return
             Iustitia.bus.publish(
@@ -202,10 +202,10 @@ class ClientPlayNetworkHandlerMixin {
      *  decorated `Text`. Capture OTHER players' messages only (sender is a tracked player AND not the
      *  local player); system/game messages never reach this handler. Fail-open. */
     @Inject(method = ["onChatMessage"], at = [At("HEAD")])
-    private fun iustitia_onChatMessage(packet: ChatMessageS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onChatMessage(packet: ClientboundPlayerChatPacket, ci: CallbackInfo) {
         try {
             val sender = packet.sender() ?: return
-            if (sender == MinecraftClient.getInstance().player?.uuid) return
+            if (sender == Minecraft.getInstance().player?.uuid) return
             val tracked = EntityTrackerManager.all().firstOrNull { it.uuid == sender } ?: return
             val text = packet.body()?.content()?.takeIf { it.isNotBlank() }
                 ?: packet.unsignedContent()?.string ?: return
@@ -224,7 +224,7 @@ class ClientPlayNetworkHandlerMixin {
      *  `ChatHistory.captureDecorated` recovers `(username, message)` structurally and resolves the
      *  UUID from the tab list. System noise (join/leave/death) is dropped — it has no separator. Fail-open. */
     @Inject(method = ["onGameMessage"], at = [At("HEAD")])
-    private fun iustitia_onGameMessage(packet: GameMessageS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onGameMessage(packet: ClientboundSystemChatPacket, ci: CallbackInfo) {
         try {
             dev.iustitia.chathist.ChatHistory.captureDecorated(packet.content())
         } catch (_: Throwable) {}
@@ -235,7 +235,7 @@ class ClientPlayNetworkHandlerMixin {
      *  uses it. `ChatHistory.captureProfileless` resolves the display name → clean username + UUID.
      *  Fail-open. */
     @Inject(method = ["onProfilelessChatMessage"], at = [At("HEAD")])
-    private fun iustitia_onProfilelessChatMessage(packet: ProfilelessChatMessageS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onProfilelessChatMessage(packet: ClientboundDisguisedChatPacket, ci: CallbackInfo) {
         try {
             val params = packet.chatType() ?: return
             dev.iustitia.chathist.ChatHistory.captureProfileless(params.name(), packet.message())
@@ -248,7 +248,7 @@ class ClientPlayNetworkHandlerMixin {
     // the live-test harness, which publishes the signal directly; it is not evidence an observer
     // ever has about somebody else's hit.
     @Inject(method = ["onDamageTilt"], at = [At("HEAD")])
-    private fun iustitia_onDamageTilt(packet: DamageTiltS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onDamageTilt(packet: ClientboundHurtAnimationPacket, ci: CallbackInfo) {
         try {
             val victim = otherPlayer(packet.id) ?: return
             Iustitia.bus.publish(HurtSignal(victim, Iustitia.tickCounter, -1, HurtSource.DAMAGE_TILT))
@@ -256,7 +256,7 @@ class ClientPlayNetworkHandlerMixin {
     }
 
     @Inject(method = ["onEntityVelocityUpdate"], at = [At("HEAD")])
-    private fun iustitia_onEntityVelocityUpdate(packet: EntityVelocityUpdateS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onEntityVelocityUpdate(packet: ClientboundSetEntityMotionPacket, ci: CallbackInfo) {
         try {
             val entity = otherPlayer(packet.entityId) ?: return
             val vel = packet.velocity
@@ -270,12 +270,12 @@ class ClientPlayNetworkHandlerMixin {
     }
 
     @Inject(method = ["onEntityStatusEffect"], at = [At("HEAD")])
-    private fun iustitia_onEntityStatusEffect(packet: EntityStatusEffectS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onEntityStatusEffect(packet: ClientboundUpdateMobEffectPacket, ci: CallbackInfo) {
         try {
             val entity = otherPlayer(packet.getEntityId()) ?: return
             val entry = packet.getEffectId()
-            val isSpeed = try { entry === StatusEffects.SPEED } catch (_: Throwable) { false }
-            val isBlind = try { entry === StatusEffects.BLINDNESS } catch (_: Throwable) { false }
+            val isSpeed = try { entry === MobEffects.SPEED } catch (_: Throwable) { false }
+            val isBlind = try { entry === MobEffects.BLINDNESS } catch (_: Throwable) { false }
             val amp = if (isSpeed) packet.getAmplifier() else -1
             val blindAmp = if (isBlind) packet.getAmplifier() else -1
             // markEffect is Speed-only (feeds the SpeedEnvelope cap raise); Blindness is tracked
@@ -286,12 +286,12 @@ class ClientPlayNetworkHandlerMixin {
     }
 
     @Inject(method = ["onRemoveEntityStatusEffect"], at = [At("HEAD")])
-    private fun iustitia_onRemoveEntityStatusEffect(packet: RemoveEntityStatusEffectS2CPacket, ci: CallbackInfo) {
+    private fun iustitia_onRemoveEntityStatusEffect(packet: ClientboundRemoveMobEffectPacket, ci: CallbackInfo) {
         try {
             val entity = otherPlayer(packet.entityId()) ?: return
             val entry = packet.effect()
-            val isSpeed = try { entry === StatusEffects.SPEED } catch (_: Throwable) { false }
-            val isBlind = try { entry === StatusEffects.BLINDNESS } catch (_: Throwable) { false }
+            val isSpeed = try { entry === MobEffects.SPEED } catch (_: Throwable) { false }
+            val isBlind = try { entry === MobEffects.BLINDNESS } catch (_: Throwable) { false }
             // Forward both Speed and Blindness removal; drop other effects (unobserved). The
             // remove packet carries no amplifier, so blindAmplifier = -1 on removal (the
             // sprintHack check only cares that Blindness ended, not the level).

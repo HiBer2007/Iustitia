@@ -1,8 +1,8 @@
 package dev.iustitia.selftest
 
 import dev.iustitia.event.HurtSource
-import net.minecraft.item.ItemStack
-import net.minecraft.item.Items
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 
 /**
  * The **legitimate pass**: bots that mirror vanilla play. Nothing here may alert -- every
@@ -377,7 +377,7 @@ object Scenarios {
         b.expectQuiet(bot, "waterWalk")
         // A real pool: the surface the bot stands on is replaced by water, so its feet are in
         // the liquid exactly as they are when swimming.
-        b.fill(16, (b.groundY - 1).toInt(), -10, 24, (b.groundY - 1).toInt(), 10, net.minecraft.block.Blocks.WATER)
+        b.fill(16, (b.groundY - 1).toInt(), -10, 24, (b.groundY - 1).toInt(), 10, net.minecraft.world.level.block.Blocks.WATER)
         var z = 6.0
         b.everyTick {
             // Re-assert the swim pose every tick: the client recomputes `isSwimming` from the
@@ -410,7 +410,7 @@ object Scenarios {
         val base = 0.0
         val g = b.groundY
         // a ladder column beside the bot, spanning the climb
-        b.fill(30, g.toInt(), 1, 30, (g + 14).toInt(), 1, net.minecraft.block.Blocks.LADDER)
+        b.fill(30, g.toInt(), 1, 30, (g + 14).toInt(), 1, net.minecraft.world.level.block.Blocks.LADDER)
         var t = 0
         b.everyTick {
             val i = t++
@@ -431,7 +431,7 @@ object Scenarios {
         // A deployed elytra needs the chest slot to hold one: the client's own glide check
         // (`canGlide`) clears the flag without it, and the tracker would then read the bot as a
         // plain falling player rather than a glider.
-        bot.equip(net.minecraft.entity.EquipmentSlot.CHEST, ItemStack(Items.ELYTRA))
+        bot.equip(net.minecraft.world.entity.EquipmentSlot.CHEST, ItemStack(Items.ELYTRA))
         b.everyTick {
             bot.gliding(true) // re-assert: the flag is recomputed by the client each tick
             bot.look(0f, -25f)
@@ -724,9 +724,9 @@ object Scenarios {
             val top = if (slab) gi + (s - 1) / 2 else gi + s / 2 - 1
             b.place(
                 0, top, s,
-                if (slab) net.minecraft.block.Blocks.STONE_SLAB else net.minecraft.block.Blocks.STONE,
+                if (slab) net.minecraft.world.level.block.Blocks.STONE_SLAB else net.minecraft.world.level.block.Blocks.STONE,
             )
-            b.fill(0, gi - 1, s, 0, top - 1, s, net.minecraft.block.Blocks.STONE)
+            b.fill(0, gi - 1, s, 0, top - 1, s, net.minecraft.world.level.block.Blocks.STONE)
         }
         var t = 0
         b.everyTick {
@@ -770,7 +770,7 @@ object Scenarios {
         val g = b.groundY
         val gi = g.toInt()
         // tower x 40..42, z -2..2, three blocks tall: top surface at gi + 3, ledge at x = 43.0
-        b.fill(40, gi, -2, 42, gi + 2, 2, net.minecraft.block.Blocks.STONE)
+        b.fill(40, gi, -2, 42, gi + 2, 2, net.minecraft.world.level.block.Blocks.STONE)
         val top = g + 3.0
         val bot = b.bot("Edge", 43.2, top, -1.5)
         b.expectQuiet(bot, "flyEnvelope")

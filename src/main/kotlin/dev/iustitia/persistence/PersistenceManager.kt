@@ -8,7 +8,7 @@ import com.google.gson.JsonParser
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import net.fabricmc.loader.api.FabricLoader
-import net.minecraft.util.math.Vec3d
+import net.minecraft.world.phys.Vec3
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -193,7 +193,7 @@ object PersistenceManager {
         if (o.has("evidence") && !o.get("evidence").isJsonNull) {
             val e = o.getAsJsonObject("evidence")
             val pos = if (e.has("pos") && !e.get("pos").isJsonNull) {
-                val pa = e.getAsJsonArray("pos"); Vec3d(pa[0].asDouble, pa[1].asDouble, pa[2].asDouble)
+                val pa = e.getAsJsonArray("pos"); Vec3(pa[0].asDouble, pa[1].asDouble, pa[2].asDouble)
             } else null
             ev = dev.iustitia.history.Evidence(
                 subLabel = e.get("subLabel")?.takeIf { !it.isJsonNull }?.asString,
@@ -252,7 +252,7 @@ object PersistenceManager {
     }
 
     // ---- one-off files (snapshots + exports) ----
-    /** The `snapshots/` dir as a [java.io.File] for [net.minecraft.client.util.ScreenshotRecorder],
+    /** The `snapshots/` dir as a [java.io.File] for [net.minecraft.client.Screenshot],
      *  created if missing. Null when persistence is off (caller bails → no PNG, chat/json summary
      *  still land). Called on the client thread. */
     fun screenshotsDirFile(): java.io.File? = try {

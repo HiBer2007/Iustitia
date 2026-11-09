@@ -13,7 +13,7 @@ import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.LagCombatCorrelator
 import dev.iustitia.tracking.TrackedPlayer
 import dev.iustitia.world.WorldQueries
-import net.minecraft.client.MinecraftClient
+import net.minecraft.client.Minecraft
 import java.util.UUID
 import kotlin.math.hypot
 
@@ -233,7 +233,7 @@ class NoKnockbackCheck : Check() {
         if (tick - EntityTrackerManager.lastServerLagTick <= 4 ||
             tick - EntityTrackerManager.lastLagBurstTick <= 2
         ) return
-        val world = MinecraftClient.getInstance().world ?: return
+        val world = Minecraft.getInstance().world ?: return
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         val footY = Math.floor(tp.pos.y).toInt()

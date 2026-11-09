@@ -11,9 +11,9 @@ import dev.iustitia.history.Evidence
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.TrackedPlayer
 import dev.iustitia.world.WorldQueries
-import net.minecraft.block.Blocks
-import net.minecraft.item.MaceItem
-import net.minecraft.client.MinecraftClient
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.item.MaceItem
+import net.minecraft.client.Minecraft
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -129,7 +129,7 @@ class NoFallDamageCheck : Check() {
             if (tick - EntityTrackerManager.lastServerLagTick <= LagWindows.LAG_WINDOW ||
                 tick - EntityTrackerManager.lastLagBurstTick <= LagWindows.BURST_WINDOW
             ) return
-            val world = MinecraftClient.getInstance().world ?: return
+            val world = Minecraft.getInstance().world ?: return
             val ctx = contextOf(tp.uuid) as NoFallContext
             val dy = tp.deltaY
             // Math.floor, not toInt(): Double.toInt() truncates toward zero, picking the wrong
@@ -245,7 +245,7 @@ class NoFallDamageCheck : Check() {
         } catch (_: Throwable) {}
     }
 
-    private fun isSoftLand(state: net.minecraft.block.BlockState): Boolean = try {
+    private fun isSoftLand(state: net.minecraft.world.level.block.state.BlockState): Boolean = try {
         state.isOf(Blocks.WATER) || state.isOf(Blocks.SLIME_BLOCK) ||
             state.isOf(Blocks.HAY_BLOCK) || state.isOf(Blocks.COBWEB)
     } catch (_: Throwable) {

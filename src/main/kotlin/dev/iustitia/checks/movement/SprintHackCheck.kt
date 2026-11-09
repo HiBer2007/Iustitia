@@ -8,7 +8,7 @@ import dev.iustitia.history.Evidence
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.TrackedPlayer
 import dev.iustitia.world.WorldQueries
-import net.minecraft.client.MinecraftClient
+import net.minecraft.client.Minecraft
 import java.util.UUID
 import dev.iustitia.checks.LagWindows
 
@@ -99,7 +99,7 @@ class SprintHackCheck : Check() {
 
     /** Sprint(Water): feet block is liquid, head (eye-height) block is NOT liquid, not swimming. */
     private fun waterSprint(tp: TrackedPlayer, tick: Int): Boolean {
-        val world = MinecraftClient.getInstance().world ?: return false
+        val world = Minecraft.getInstance().world ?: return false
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         val footY = Math.floor(tp.pos.y).toInt()

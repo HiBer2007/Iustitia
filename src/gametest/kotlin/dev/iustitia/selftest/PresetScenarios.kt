@@ -364,7 +364,7 @@ object PresetScenarios {
         private fun chat(): List<String> = ClientThread.computeOnClient { mc ->
             val hud = mc.inGameHud.chatHud
             val f = hud.javaClass.getDeclaredField("messages").apply { isAccessible = true }
-            (f.get(hud) as List<*>).map { (it as net.minecraft.client.gui.hud.ChatHudLine).content().string }
+            (f.get(hud) as List<*>).map { (it as net.minecraft.client.GuiMessage).content().string }
         }
 
         /** The chat lines a command produced. */

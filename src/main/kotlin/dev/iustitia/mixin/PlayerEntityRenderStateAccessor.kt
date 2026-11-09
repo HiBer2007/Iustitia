@@ -1,7 +1,7 @@
 package dev.iustitia.mixin
 
-import net.minecraft.client.render.entity.state.PlayerEntityRenderState
-import net.minecraft.text.Text
+import net.minecraft.client.renderer.entity.state.AvatarRenderState
+import net.minecraft.network.chat.Component
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.gen.Accessor
 
@@ -22,12 +22,12 @@ import org.spongepowered.asm.mixin.gen.Accessor
  * instance IS-A `PlayerEntityRenderState`, so casting a player render state to this accessor works
  * (the interface is added to the subclass). `playerName` is `@Nullable`, so the accessor uses `Text?`.
  */
-@Mixin(PlayerEntityRenderState::class)
+@Mixin(AvatarRenderState::class)
 interface PlayerEntityRenderStateAccessor {
 
     @Accessor("playerName")
-    fun iustitia_getPlayerName(): Text?
+    fun iustitia_getPlayerName(): Component?
 
     @Accessor("playerName")
-    fun iustitia_setPlayerName(value: Text?)
+    fun iustitia_setPlayerName(value: Component?)
 }

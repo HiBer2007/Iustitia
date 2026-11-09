@@ -1,7 +1,7 @@
 package dev.iustitia.selftest
 
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
-import net.minecraft.client.MinecraftClient
+import net.minecraft.client.Minecraft
 
 /**
  * Thin bridge between the gametest thread and the client thread. The gametest
@@ -39,12 +39,12 @@ object ClientThread {
      * every call site (which the Kotlin compiler cannot infer from a non-throwing
      * lambda).
      */
-    fun runOnClient(action: (MinecraftClient) -> Unit) {
+    fun runOnClient(action: (Minecraft) -> Unit) {
         context().runOnClient<RuntimeException> { mc -> action(mc) }
     }
 
     /** Run [action] on the client thread and return its result. */
-    fun <T : Any> computeOnClient(action: (MinecraftClient) -> T): T {
+    fun <T : Any> computeOnClient(action: (Minecraft) -> T): T {
         return context().computeOnClient<T, RuntimeException> { mc -> action(mc) }
     }
 }

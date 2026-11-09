@@ -1,7 +1,7 @@
 package dev.iustitia.event
 
-import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.Vec3d
+import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -83,7 +83,7 @@ enum class HurtSource { STATUS, ENTITY_DAMAGE, DAMAGE_TILT, VELOCITY }
 data class VelocitySignal(
     val entity: UUID,
     val tick: Int,
-    val velocity: Vec3d,
+    val velocity: Vec3,
 )
 
 /** Game join — triggers protocol re-detection and tracker reset. (Respawn is NOT injected

@@ -3,8 +3,8 @@ package dev.iustitia.render
 import dev.iustitia.Iustitia
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
-import net.minecraft.client.MinecraftClient
-import net.minecraft.particle.DustParticleEffect
+import net.minecraft.client.Minecraft
+import net.minecraft.core.particles.DustParticleOptions
 import java.util.UUID
 
 /**
@@ -50,7 +50,7 @@ object BurstSparks {
             if (!ConfigManager.config.burstSparks) return
             if (tier == FlagHistory.Tier.GREEN) return
             val color = if (tier == FlagHistory.Tier.RED) RED_RGB else YELLOW_RGB
-            val client = MinecraftClient.getInstance()
+            val client = Minecraft.getInstance()
             client.execute {
                 try {
                     val world = client.world ?: return@execute
@@ -59,7 +59,7 @@ object BurstSparks {
                     // Eye position via tickDelta 0 (this fires on the tick boundary; close enough for
                     // a particle origin — the spray is coarse by design).
                     val eye = offender.getCameraPosVec(0f)
-                    val dust = DustParticleEffect(color, SCALE)
+                    val dust = DustParticleOptions(color, SCALE)
                     // Deterministic pseudo-random spread from the player uuid + current tick so the
                     // burst looks natural but stays off Math.random (unavailable in some contexts).
                     val seed = (uuid.leastSignificantBits xor Iustitia.tickCounter.toLong())

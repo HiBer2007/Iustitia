@@ -4,27 +4,27 @@ import com.mojang.blaze3d.buffers.GpuBuffer
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexFormat
 import dev.iustitia.replay.ChunkSnapshot
-import net.minecraft.block.Block
-import net.minecraft.block.BlockRenderType
-import net.minecraft.block.BlockState
-import net.minecraft.block.Blocks
-import net.minecraft.client.MinecraftClient
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.RenderShape
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.client.Minecraft
 import net.minecraft.client.color.block.BlockColors
-import net.minecraft.client.render.BlockRenderLayers
-import net.minecraft.client.render.BufferBuilder
-import net.minecraft.client.render.OverlayTexture
-import net.minecraft.client.render.RenderLayer
-import net.minecraft.client.render.RenderLayers
-import net.minecraft.client.render.model.BakedQuad
-import net.minecraft.client.render.model.BlockModelPart
-import net.minecraft.client.render.model.BlockStateModel
-import net.minecraft.client.util.BufferAllocator
-import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.command.argument.BlockArgumentParser
-import net.minecraft.registry.Registries
-import net.minecraft.util.Identifier
-import net.minecraft.util.math.Direction
-import net.minecraft.util.math.random.Random
+import net.minecraft.client.renderer.ItemBlockRenderTypes
+import com.mojang.blaze3d.vertex.BufferBuilder
+import net.minecraft.client.renderer.texture.OverlayTexture
+import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.client.renderer.block.model.BakedQuad
+import net.minecraft.client.renderer.block.model.BlockModelPart
+import net.minecraft.client.renderer.block.model.BlockStateModel
+import com.mojang.blaze3d.vertex.ByteBufferBuilder
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.commands.arguments.blocks.BlockStateParser
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.resources.Identifier
+import net.minecraft.core.Direction
+import net.minecraft.util.RandomSource
 
 /**
  * Resolves a captured [ChunkSnapshot] into **per-block, face-culled, precomputed quads** grouped by
@@ -125,8 +125,8 @@ object ChunkMesher {
      *  bake failed) or when the whole static-draw path throws for a frame. */
     data class ChunkBlocks(
         val chunkX: Int, val chunkZ: Int,
-        val byLayer: Map<RenderLayer, List<BlockQuads>>,
-        val staticByLayer: Map<RenderLayer, StaticChunkLayer>,
+        val byLayer: Map<RenderType, List<BlockQuads>>,
+        val staticByLayer: Map<RenderType, StaticChunkLayer>,
         val blockCount: Int,
         val minX: Int, val minY: Int, val minZ: Int,
         val maxX: Int, val maxY: Int, val maxZ: Int,
@@ -146,8 +146,8 @@ object ChunkMesher {
     private const val STATIC_ALLOC_CAPACITY = 2_097_152
     private var stateCache: HashMap<String, BlockState?> = HashMap(256)
     private var tintCache: HashMap<String, Int> = HashMap(256)
-    private var layerCache: HashMap<String, RenderLayer> = HashMap(256)
-    private val rand: Random = Random.create()
+    private var layerCache: HashMap<String, RenderType> = HashMap(256)
+    private val rand: RandomSource = RandomSource.create()
     private val directions: Array<Direction> = Direction.entries.toTypedArray()
 
     /** Chunk-coord → long key, delegating to the one definition of the encoding
@@ -260,9 +260,9 @@ object ChunkMesher {
 
     /** Compute the face-culled quads of one chunk, grouped by RenderLayer. Block names + tint + layer
      *  resolve through the shared per-name caches. */
-    private fun bakeChunkBlocks(snap: ChunkSnapshot, rec: ChunkSnapshot.ChunkRec): Map<RenderLayer, List<BlockQuads>> {
-        val byLayer = HashMap<RenderLayer, MutableList<BlockQuads>>()
-        val mc = MinecraftClient.getInstance()
+    private fun bakeChunkBlocks(snap: ChunkSnapshot, rec: ChunkSnapshot.ChunkRec): Map<RenderType, List<BlockQuads>> {
+        val byLayer = HashMap<RenderType, MutableList<BlockQuads>>()
+        val mc = Minecraft.getInstance()
         val brm = mc.blockRenderManager ?: return emptyMap()
         val blockColors = mc.blockColors
         val baseX = rec.chunkX shl 4
@@ -286,7 +286,7 @@ object ChunkMesher {
                 val st = stateFor(name) ?: continue
                 // Fluids + invisible-render-type blocks render nothing (matches the old
                 // renderBlockAsEntity self-skip). MODEL + ENTITYBLOCK_ANIMATED proceed via their model.
-                if (st.renderType == BlockRenderType.INVISIBLE) continue
+                if (st.renderType == RenderShape.INVISIBLE) continue
                 // Block-level surface-shell skip: all 6 neighbours opaque ⇒ fully interior ⇒ never seen.
                 if (isOpaqueAt(snap, x + 1, y, z) &&
                     isOpaqueAt(snap, x - 1, y, z) &&
@@ -338,15 +338,15 @@ object ChunkMesher {
      * per-frame emission cost to a one-time, lazy-budgeted bake. Per-layer fail-open: a throw for one
      * layer leaves it absent from the result and the renderer falls back to that layer's [byLayer].
      */
-    private fun bakeStatic(byLayer: Map<RenderLayer, List<BlockQuads>>): Map<RenderLayer, StaticChunkLayer> {
-        val out = HashMap<RenderLayer, StaticChunkLayer>()
+    private fun bakeStatic(byLayer: Map<RenderType, List<BlockQuads>>): Map<RenderType, StaticChunkLayer> {
+        val out = HashMap<RenderType, StaticChunkLayer>()
         if (byLayer.isEmpty()) return out
         val dev = try { RenderSystem.getDevice() } catch (_: Throwable) { null } ?: return out
-        val ms = MatrixStack()
+        val ms = PoseStack()
         for ((layer, blocks) in byLayer) {
             try {
                 if (blocks.isEmpty()) continue
-                val alloc = BufferAllocator(STATIC_ALLOC_CAPACITY)
+                val alloc = ByteBufferBuilder(STATIC_ALLOC_CAPACITY)
                 try {
                     val bb = BufferBuilder(alloc, VertexFormat.DrawMode.QUADS, layer.getVertexFormat())
                     for (bq in blocks) {
@@ -444,17 +444,17 @@ object ChunkMesher {
             // Registries.BLOCK is a DefaultedRegistry<Block> which IS-A RegistryWrapper.Impl<Block>
             // (Registry extends RegistryWrapper.Impl), so it's passed directly as the wrapper the
             // parser resolves block ids + properties against.
-            BlockArgumentParser.block(Registries.BLOCK, name, false).blockState()
+            BlockStateParser.block(BuiltInRegistries.BLOCK, name, false).blockState()
         } else {
             val id = Identifier.tryParse(name) ?: return null
-            Registries.BLOCK.get(id).defaultState
+            BuiltInRegistries.BLOCK.get(id).defaultState
         }
     } catch (_: Throwable) {
         // fall back to the bare-id default state (today's behaviour) — a bad property value still
         // renders the block in its default orientation instead of skipping it entirely.
         val bare = name.substringBefore('[')
         val id = Identifier.tryParse(bare) ?: return null
-        try { Registries.BLOCK.get(id).defaultState } catch (_: Throwable) { null }
+        try { BuiltInRegistries.BLOCK.get(id).defaultState } catch (_: Throwable) { null }
     }
 
     /** Resolve a block's tint colour (ARGB int) for tint index 0, memoized in [tintCache]. Same call
@@ -466,8 +466,8 @@ object ChunkMesher {
 
     /** Resolve a block's entity-block RenderLayer, memoized in [layerCache]. Same routing the old
      *  renderBlockAsEntity used (BlockRenderLayers.getEntityBlockLayer). Fail-open to SOLID. */
-    private fun layerFor(name: String, st: BlockState): RenderLayer = layerCache.getOrPut(name) {
-        try { BlockRenderLayers.getEntityBlockLayer(st) } catch (_: Throwable) { RenderLayers.solid() }
+    private fun layerFor(name: String, st: BlockState): RenderType = layerCache.getOrPut(name) {
+        try { ItemBlockRenderTypes.getEntityBlockLayer(st) } catch (_: Throwable) { RenderTypes.solid() }
     }
 
     /** Read palette index [entry] (0..4095) → palette name, honouring the 1-vs-2 byte width. Fail-open null. */

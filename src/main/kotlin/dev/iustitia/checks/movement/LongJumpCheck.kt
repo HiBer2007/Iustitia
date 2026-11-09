@@ -6,7 +6,7 @@ import dev.iustitia.config.IustitiaConfig
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.TrackedPlayer
 import dev.iustitia.world.WorldQueries
-import net.minecraft.client.MinecraftClient
+import net.minecraft.client.Minecraft
 import java.util.UUID
 import kotlin.math.hypot
 import dev.iustitia.checks.LagWindows
@@ -65,7 +65,7 @@ class LongJumpCheck : Check() {
                 // single-tick check can't afford to strict-flag on an unloaded chunk, per the
                 // chunk-unloaded-never-FP rule. The grounded reset below still runs.
                 var eff = cfg.threshold * SpeedMath.speedFactor(tp.speedAmplifier)
-                val world = MinecraftClient.getInstance().world
+                val world = Minecraft.getInstance().world
                 if (world != null) {
                     val state = WorldQueries.blockStateAt(
                         world,

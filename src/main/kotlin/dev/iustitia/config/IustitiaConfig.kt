@@ -166,9 +166,9 @@ data class IustitiaConfig(
      *  the ghosts on top of the live players instead. Render-only — the live game keeps running. */
     var replayHideLive: Boolean = true,
     /** Render replay/clip ghosts as the actual Minecraft player MODEL with each player's REAL skin
-     *  (resolved per-UUID from the tab-list [net.minecraft.client.network.PlayerListEntry] vanilla keeps
+     *  (resolved per-UUID from the tab-list [net.minecraft.client.multiplayer.PlayerInfo] vanilla keeps
      *  warm; Steve/Alex fallback for players not in the tab list — see [dev.iustitia.render.ReplaySkins]),
-     *  driven via the vanilla [net.minecraft.client.render.entity.PlayerEntityRenderer] model, instead
+     *  driven via the vanilla [net.minecraft.client.renderer.entity.player.AvatarRenderer] model, instead
      *  of the tier-colored humanoid box outline. ON by default. This path drives a render-state model
      *  outside the vanilla entity pipeline, whose exact block scale + pose transforms are
      *  runtime-only-verifiable (see [dev.iustitia.render.ReplayRenderer]). The box outline remains the

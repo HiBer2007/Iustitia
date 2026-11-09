@@ -1,18 +1,18 @@
 package dev.iustitia.chathist
 
-import net.minecraft.client.MinecraftClient
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
 import java.util.UUID
 
 /**
  * Decorated-chat capture for `/ius chathist`. The signed player-chat path
- * ([ChatMessageS2CPacket][net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket], handled in
+ * ([ChatMessageS2CPacket][net.minecraft.network.protocol.game.ClientboundPlayerChatPacket], handled in
  * [dev.iustitia.mixin.ClientPlayNetworkHandlerMixin.iustitia_onChatMessage]) only fires on servers
  * that keep chat signing. The servers most users want chathist on — Hypixel, ArchMC, Minemen,
  * Cavern, EvoxMC, Stray, mcpvp, PvpHQ, Mineplex — broadcast decorated chat
  * (`[rank] [stars] username ❣: message`) as **system/game messages**
- * ([GameMessageS2CPacket][net.minecraft.network.packet.s2c.play.GameMessageS2CPacket]) or
- * **profileless chat** ([ProfilelessChatMessageS2CPacket][net.minecraft.network.packet.s2c.play.ProfilelessChatMessageS2CPacket]),
+ * ([GameMessageS2CPacket][net.minecraft.network.protocol.game.ClientboundSystemChatPacket]) or
+ * **profileless chat** ([ProfilelessChatMessageS2CPacket][net.minecraft.network.protocol.game.ClientboundDisguisedChatPacket]),
  * neither of which carries a sender UUID. This parser recovers `(username, message)` from those
  * paths.
  *
@@ -60,7 +60,7 @@ object DecoratedChatParser {
     data class Parsed(val name: String, val uuid: UUID, val text: String)
 
     /** Parse a system/game message ([GameMessageS2CPacket.content]) into a chat row, or null. Fail-open. */
-    fun parseGameMessage(text: Text, permissive: Boolean): Parsed? = try {
+    fun parseGameMessage(text: Component, permissive: Boolean): Parsed? = try {
         val s = stripColor(text.string).trim()
         if (s.isEmpty()) return null
         val localName = localName()
@@ -100,7 +100,7 @@ object DecoratedChatParser {
      * the sender display name ([nameText]) from the message body ([messageText]), so only the name →
      * clean-username resolution is needed. Fail-open.
      */
-    fun parseProfileless(nameText: Text, messageText: Text, permissive: Boolean): Parsed? = try {
+    fun parseProfileless(nameText: Component, messageText: Component, permissive: Boolean): Parsed? = try {
         val msg = stripColor(messageText.string).trim()
         if (msg.isEmpty()) return null
         val localName = localName()
@@ -129,7 +129,7 @@ object DecoratedChatParser {
      * name for [uuid]; falls back to [fallback]. Fail-open (returns [fallback]).
      */
     fun resolveCleanName(uuid: UUID, fallback: String): String = try {
-        MinecraftClient.getInstance().networkHandler?.getPlayerListEntry(uuid)?.profile?.name
+        Minecraft.getInstance().networkHandler?.getPlayerListEntry(uuid)?.profile?.name
             ?.takeIf { it.isNotBlank() } ?: fallback
     } catch (_: Throwable) { fallback }
 
@@ -199,12 +199,12 @@ object DecoratedChatParser {
     }
 
     private fun tabNames(): List<String> = try {
-        val h = MinecraftClient.getInstance().networkHandler ?: return emptyList()
+        val h = Minecraft.getInstance().networkHandler ?: return emptyList()
         h.playerList.mapNotNull { it.profile?.name }.filter { it.isNotBlank() }
     } catch (_: Throwable) { emptyList() }
 
     private fun localName(): String? = try {
-        MinecraftClient.getInstance().player?.gameProfile?.name
+        Minecraft.getInstance().player?.gameProfile?.name
     } catch (_: Throwable) { null }
 
     /**
@@ -213,7 +213,7 @@ object DecoratedChatParser {
      * player (by UUID). Returns null when not in the tab list and not permissive (→ drop the row).
      */
     private fun resolveByName(name: String, permissive: Boolean): UUID? {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val local = try { mc.player?.uuid } catch (_: Throwable) { null }
         val entry = try { mc.networkHandler?.getCaseInsensitivePlayerInfo(name) } catch (_: Throwable) { null }
         val uuid = entry?.profile?.id

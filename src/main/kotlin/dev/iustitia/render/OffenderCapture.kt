@@ -5,7 +5,7 @@ import java.util.UUID
 /**
  * One-shot hand-off state for the **offender selfie** screenshot (Phase B): the local player's
  * main framebuffer only ever holds the *local* camera view, so to capture another player from the
- * front ("F5-selfie" angle) we override [net.minecraft.client.render.Camera] for exactly ONE render
+ * front ("F5-selfie" angle) we override [net.minecraft.client.Camera] for exactly ONE render
  * frame and grab the framebuffer at the end of that frame's world render.
  *
  * ## Threading / single-frame guarantee

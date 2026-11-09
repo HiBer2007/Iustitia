@@ -31,11 +31,11 @@ import dev.iustitia.ui.ChatHistPanelScreen
 import dev.iustitia.ui.TranscriptPanelScreen
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
-import net.minecraft.client.MinecraftClient
-import net.minecraft.text.ClickEvent
-import net.minecraft.text.HoverEvent
-import net.minecraft.text.MutableText
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.ClickEvent
+import net.minecraft.network.chat.HoverEvent
+import net.minecraft.network.chat.MutableComponent
+import net.minecraft.network.chat.Component
 import java.text.SimpleDateFormat
 import java.util.UUID
 import kotlin.math.ceil
@@ -355,7 +355,7 @@ object IustitiaCommand {
 
     // ---- feedback helper ----
     private fun send(ctx: CommandContext<FabricClientCommandSource>, line: String) {
-        ctx.source.sendFeedback(Text.literal(line))
+        ctx.source.sendFeedback(Component.literal(line))
     }
 
     // ---- companion-mod yield guards ----
@@ -455,11 +455,11 @@ object IustitiaCommand {
     }
 
     private fun openConfig(ctx: CommandContext<FabricClientCommandSource>): Int {
-        MinecraftClient.getInstance().execute {
+        Minecraft.getInstance().execute {
             try {
-                MinecraftClient.getInstance().setScreen(YaclScreenBuilder.build(MinecraftClient.getInstance().currentScreen))
+                Minecraft.getInstance().setScreen(YaclScreenBuilder.build(Minecraft.getInstance().currentScreen))
             } catch (_: Throwable) {
-                MinecraftClient.getInstance().player?.sendMessage(
+                Minecraft.getInstance().player?.sendMessage(
                     L10n.t("iustitia.cmd.configOpenFail", tag), false
                 )
             }
@@ -706,7 +706,7 @@ object IustitiaCommand {
     /** Open the chathist side panel for a query (mirrors `transcriptPanelNamed`'s mc.execute pattern). */
     private fun openChatPanel(ctx: CommandContext<FabricClientCommandSource>, subtitle: String, rowsProvider: () -> List<dev.iustitia.chathist.ChatHistory.Row>, limit: Int) {
         if (companionOwnsChat(ctx)) return
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(ChatHistPanelScreen(subtitle, rowsProvider, limit, null)) } catch (_: Throwable) {} }
         send(ctx, L10n.s("iustitia.cmd.chathistPanelHeader", tag, subtitle, limit))
     }
@@ -729,15 +729,15 @@ object IustitiaCommand {
         // The `[iustitia]` tag prefix would shift the top divider right of the chat rows below it,
         // so emit the tag on its own line first, then the un-prefixed divider one row lower — it
         // left-aligns with the rows and the bottom divider.
-        src.sendFeedback(Text.literal(tag))
+        src.sendFeedback(Component.literal(tag))
         // top divider: ...---[IUS ChatHistory]---...
         src.sendFeedback(L10n.t("iustitia.cmd.chatHistDivider"))
         for (r in pageRows) {
             val ts = try { chatTimeFmt.format(java.util.Date(r.wallClockMs)) } catch (_: Throwable) { "??:??:??" }
-            src.sendFeedback(Text.literal("§8[$ts] §7[§f${r.name}§7]§r ${r.text}"))
+            src.sendFeedback(Component.literal("§8[$ts] §7[§f${r.name}§7]§r ${r.text}"))
         }
         // bottom divider: [<]...---[Page N/M]---...[>], clickable where valid.
-        val bottom: MutableText = Text.literal("")
+        val bottom: MutableComponent = Component.literal("")
         val prevCmd = "/ius $cmdPrefix ${p - 1}"
         val nextCmd = "/ius $cmdPrefix ${p + 1}"
         bottom.append(clickButton("§3<§r", if (p > 1) prevCmd else null, L10n.s("iustitia.cmd.prevPageHover")))
@@ -747,12 +747,12 @@ object IustitiaCommand {
     }
 
     /** A `[<]`/`[>]` button: clickable (run-command) + hover-text when [cmd] is non-null, plain when null. */
-    private fun clickButton(label: String, cmd: String?, hover: String): Text = try {
-        if (cmd == null) Text.literal("§8$label")
-        else Text.literal(label).styled { s ->
-            s.withClickEvent(ClickEvent.RunCommand(cmd)).withHoverEvent(HoverEvent.ShowText(Text.literal(hover)))
+    private fun clickButton(label: String, cmd: String?, hover: String): Component = try {
+        if (cmd == null) Component.literal("§8$label")
+        else Component.literal(label).styled { s ->
+            s.withClickEvent(ClickEvent.RunCommand(cmd)).withHoverEvent(HoverEvent.ShowText(Component.literal(hover)))
         }
-    } catch (_: Throwable) { Text.literal(label) }
+    } catch (_: Throwable) { Component.literal(label) }
 
     // ---- history ----
 
@@ -760,7 +760,7 @@ object IustitiaCommand {
      *  `MinecraftClient.execute{}` + fail-open pattern; falls back to the chat top-offenders
      *  dump if the screen can't be opened (e.g. opened from a non-foreground context). */
     private fun histTop(ctx: CommandContext<FabricClientCommandSource>): Int {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute {
             try {
                 mc.setScreen(PlayerSearchScreen(mc.currentScreen))
@@ -793,7 +793,7 @@ object IustitiaCommand {
             } catch (_: Throwable) { null }
         }
         if (uuid == null) { send(ctx, L10n.s("iustitia.cmd.noHistory", tag, name)); return 0 }
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute {
             try {
                 mc.setScreen(PlayerHistoryScreen(uuid, mc.currentScreen))
@@ -845,7 +845,7 @@ object IustitiaCommand {
         } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.reportBuildFail", tag, name)); return 0
         }
-        try { MinecraftClient.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
+        try { Minecraft.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.clipboardFail", tag)); return 0
         }
         send(ctx, L10n.s("iustitia.cmd.reportCopied", tag, name, text.length, fmt))
@@ -1007,7 +1007,7 @@ object IustitiaCommand {
         // same surface the keybind / `/ius transcript panel` use, so the chat print + the live panel
         // aren't mutually exclusive. Fail-open (a screen-open error never blocks the chat print).
         if (ConfigManager.config.transcriptPanel) {
-            val mc = MinecraftClient.getInstance()
+            val mc = Minecraft.getInstance()
             mc.execute { try { mc.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
         }
         return 1
@@ -1047,7 +1047,7 @@ object IustitiaCommand {
     }
 
     private fun transcriptToggle(ctx: CommandContext<FabricClientCommandSource>): Int {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         try {
             if (mc.currentScreen is TranscriptPanelScreen) { mc.setScreen(null); send(ctx, L10n.s("iustitia.cmd.transcriptPanelClosed", tag)); return 1 }
             val target = crosshairTarget()
@@ -1063,7 +1063,7 @@ object IustitiaCommand {
         val name = StringArgumentType.getString(ctx, "name")
         val uuid = resolveUuid(name)
         if (uuid == null) { send(ctx, L10n.s("iustitia.cmd.noData", tag, name)); return 0 }
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
         send(ctx, L10n.s("iustitia.cmd.transcriptPanelOpen", tag, name))
         return 1
@@ -1143,7 +1143,7 @@ object IustitiaCommand {
     }
 
     private fun sessionScreen(ctx: CommandContext<FabricClientCommandSource>): Int {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(SessionScreen(mc.currentScreen)) } catch (_: Throwable) {} }
         return 1
     }
@@ -1168,7 +1168,7 @@ object IustitiaCommand {
      *  first so the forced state isn't captured as the new baseline. Fail-open, client-thread only. */
     private fun spectate(ctx: CommandContext<FabricClientCommandSource>, nameArg: String?): Int {
         if (companionOwnsWatch(ctx)) return 1
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val active = try { dev.iustitia.render.WatchState.active } catch (_: Throwable) { false }
         // Explicit stop.
         if (nameArg != null && nameArg.equals("off", ignoreCase = true)) {
@@ -1575,13 +1575,13 @@ object IustitiaCommand {
 
     // ---- wizard (#13) + keybinds (#14) ----
     private fun wizard(ctx: CommandContext<FabricClientCommandSource>): Int {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
         return 1
     }
 
     private fun keybinds(ctx: CommandContext<FabricClientCommandSource>): Int {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(KeybindHubScreen(mc.currentScreen)) } catch (_: Throwable) {} }
         return 1
     }
@@ -1589,7 +1589,7 @@ object IustitiaCommand {
     /** `/ius clips` — open the clip manager (list saved `.iusclip` files with Play + Delete). */
     private fun clipsScreen(ctx: CommandContext<FabricClientCommandSource>): Int {
         if (companionOwnsReplay(ctx)) return 1
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         mc.execute { try { mc.setScreen(dev.iustitia.ui.ClipManagerScreen(mc.currentScreen)) } catch (_: Throwable) {} }
         return 1
     }
@@ -1670,7 +1670,7 @@ object IustitiaCommand {
         }
         val text = dev.iustitia.config.PresetShare.encode(name, template)
         if (text == null) { send(ctx, L10n.s("iustitia.cmd.presetExportEncodeFail", tag, name)); return 0 }
-        try { MinecraftClient.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
+        try { Minecraft.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.presetExportClipFail", tag)); return 0
         }
         // The chat box takes 256 chars; "/ius presets import " uses 20 of them.
@@ -1683,7 +1683,7 @@ object IustitiaCommand {
     /** `/ius presets import [string]` — validate a share string (from the argument, or the
      *  clipboard when bare) and save it as a custom preset. Never applies it; never overwrites. */
     private fun presetImport(ctx: CommandContext<FabricClientCommandSource>, arg: String?): Int {
-        val input = arg ?: try { MinecraftClient.getInstance().keyboard.clipboard } catch (_: Throwable) { null }
+        val input = arg ?: try { Minecraft.getInstance().keyboard.clipboard } catch (_: Throwable) { null }
         if (input.isNullOrBlank()) {
             send(ctx, L10n.s("iustitia.cmd.presetImportNothing", tag))
             return 0

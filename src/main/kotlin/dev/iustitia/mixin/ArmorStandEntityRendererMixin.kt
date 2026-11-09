@@ -4,14 +4,14 @@ import dev.iustitia.VerboseLog
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.render.entity.ArmorStandEntityRenderer
-import net.minecraft.client.render.entity.state.ArmorStandEntityRenderState
-import net.minecraft.entity.decoration.ArmorStandEntity
-import net.minecraft.text.Text
-import net.minecraft.util.math.Box
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.Minecraft
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.renderer.entity.ArmorStandRenderer
+import net.minecraft.client.renderer.entity.state.ArmorStandRenderState
+import net.minecraft.world.entity.decoration.ArmorStand
+import net.minecraft.network.chat.Component
+import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -65,7 +65,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * disambiguate it from the generic bridge overloads, same mechanism as the player mixin's
  * `updateRenderState` inject).
  */
-@Mixin(ArmorStandEntityRenderer::class)
+@Mixin(ArmorStandRenderer::class)
 class ArmorStandEntityRendererMixin {
 
     /** "uuid|source" keys for which we've already logged the hologram-prefix diagnostic this session. */
@@ -74,8 +74,8 @@ class ArmorStandEntityRendererMixin {
 
     @Inject(method = ["updateRenderState"], at = [At("TAIL")])
     private fun iustitia_prefixHologramName(
-        entity: ArmorStandEntity,
-        state: ArmorStandEntityRenderState,
+        entity: ArmorStand,
+        state: ArmorStandRenderState,
         tickProgress: Float,
         ci: CallbackInfo,
     ) {
@@ -91,10 +91,10 @@ class ArmorStandEntityRendererMixin {
             //     feet, horizontally centered, so a tight box + nearest-match recovers the owner.
             //     YELLOW/RED-only + a visible custom name (gated below) keeps false positives to
             //     near-zero (a decorative named stand would have to sit directly on a suspect's head).
-            val self = MinecraftClient.getInstance().player?.uuid
-            val vOwner = (entity.rootVehicle as? OtherClientPlayerEntity)
-                ?: (entity.firstPassenger as? OtherClientPlayerEntity)
-            val owner: OtherClientPlayerEntity?
+            val self = Minecraft.getInstance().player?.uuid
+            val vOwner = (entity.rootVehicle as? RemotePlayer)
+                ?: (entity.firstPassenger as? RemotePlayer)
+            val owner: RemotePlayer?
             val source: String
             if (vOwner != null) { owner = vOwner; source = "vehicle" }
             else {
@@ -119,8 +119,8 @@ class ArmorStandEntityRendererMixin {
                 FlagHistory.Tier.YELLOW -> "e" to "[!]"
                 FlagHistory.Tier.RED -> "c" to "[X]"
             }
-            val prefix = Text.literal("§${color}${glyph}§r ")
-            acc.iustitia_setDisplayName(Text.empty().append(prefix).append(name))
+            val prefix = Component.literal("§${color}${glyph}§r ")
+            acc.iustitia_setDisplayName(Component.empty().append(prefix).append(name))
             logHologramOnce(owner.uuid, tier, source)
         } catch (_: Throwable) {
             // fail-open: a render error never crashes the client
@@ -133,14 +133,14 @@ class ArmorStandEntityRendererMixin {
      * position aligns with the stand (horiz < [PROX_HORIZ], |stand.y - (player.y + PROX_NAME_Y)| <
      * [PROX_VERT]). Uses [World.getOtherEntities] (entity-section indexed) so it's cheap. Fail-open.
      */
-    private fun proximityOwner(stand: ArmorStandEntity): OtherClientPlayerEntity? {
-        val world = MinecraftClient.getInstance().world ?: return null
-        val self = MinecraftClient.getInstance().player?.uuid
-        val box = Box.of(Vec3d(stand.x, stand.y, stand.z), PROX_BOX_X, PROX_BOX_Y, PROX_BOX_X)
-        var best: OtherClientPlayerEntity? = null
+    private fun proximityOwner(stand: ArmorStand): RemotePlayer? {
+        val world = Minecraft.getInstance().world ?: return null
+        val self = Minecraft.getInstance().player?.uuid
+        val box = AABB.of(Vec3(stand.x, stand.y, stand.z), PROX_BOX_X, PROX_BOX_Y, PROX_BOX_X)
+        var best: RemotePlayer? = null
         var bestHoriz = Double.MAX_VALUE
-        for (e in world.getOtherEntities(stand, box) { it is OtherClientPlayerEntity }) {
-            val p = e as OtherClientPlayerEntity
+        for (e in world.getOtherEntities(stand, box) { it is RemotePlayer }) {
+            val p = e as RemotePlayer
             if (p.uuid == self) continue
             val dx = p.x - stand.x
             val dz = p.z - stand.z

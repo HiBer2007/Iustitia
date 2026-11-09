@@ -1,8 +1,8 @@
 package dev.iustitia.i18n
 
 import java.util.Locale
-import net.minecraft.text.Text
-import net.minecraft.util.Language
+import net.minecraft.network.chat.Component
+import net.minecraft.locale.Language
 
 /**
  * Presentation-only translation chokepoint (see README "Language").
@@ -18,7 +18,7 @@ import net.minecraft.util.Language
 object L10n {
 
     /** Translate [key] with [args] (`%s` placeholders) as a displayable [Text]. */
-    fun t(key: String, vararg args: Any?): Text = Text.literal(s(key, *args))
+    fun t(key: String, vararg args: Any?): Component = Component.literal(s(key, *args))
 
     /** Translate [key] with [args] (`%s` placeholders) as a raw [String] (chat lines, logs). */
     fun s(key: String, vararg args: Any?): String = try {

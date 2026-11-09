@@ -5,10 +5,10 @@ import dev.iustitia.Iustitia
 import dev.iustitia.history.Evidence
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.Click
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.input.MouseButtonEvent
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 
 /**
  * #1 (timeline) + #2 (profile card) in one screen — opened by `/ius hist <name>` and by clicking
@@ -71,7 +71,7 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
         return out
     }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             // F1-equivalent backdrop: a dark, mostly-opaque fill behind the content so the
             // in-game HUD (hotbar/chat) and world don't bleed through this transparent screen
@@ -87,10 +87,10 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
             context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.header", glyphFor(tier), name, tierLabel(tier)), x, y, WHITE); y += 14
             val sp = FlagHistory.span(uuid)
             val spanTxt = if (sp == null) L10n.s("iustitia.screen.playerHistory.spanNone") else L10n.s("iustitia.screen.playerHistory.span", sp.first, sp.second)
-            context.drawTextWithShadow(tr, Text.literal(spanTxt), x, y, WHITE); y += 12
+            context.drawTextWithShadow(tr, Component.literal(spanTxt), x, y, WHITE); y += 12
             val total = counts.values.sum()
             val maxVl = maxVlMap.values.maxOrNull() ?: 0.0
-            context.drawTextWithShadow(tr, Text.literal(
+            context.drawTextWithShadow(tr, Component.literal(
                 L10n.s("iustitia.screen.playerHistory.stats", FlagHistory.sessionAlertCount(uuid), total, NumFmt.d(digits = 1, v = maxVl)) +
                     (FlagHistory.topCheck(uuid)?.let { L10n.s("iustitia.screen.playerHistory.topCheck", it) } ?: "")), x, y, WHITE); y += 12
             context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.confidence", FlagHistory.confidenceLine(uuid)), x, y, WHITE); y += 14
@@ -100,18 +100,18 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
             maxVlMap.entries.take(8).forEach { (cid, vl) ->
                 val filled = (vl / maxVlForScale * 10.0).toInt().coerceIn(0, 10)
                 val bar = "▓".repeat(filled) + "░".repeat(10 - filled)
-                context.drawTextWithShadow(tr, Text.literal("§b" + cid.padEnd(16).take(16) + " §7$bar §f${NumFmt.d(digits = 1, v = vl)}"), x, y, WHITE); y += 11
+                context.drawTextWithShadow(tr, Component.literal("§b" + cid.padEnd(16).take(16) + " §7$bar §f${NumFmt.d(digits = 1, v = vl)}"), x, y, WHITE); y += 11
             }
             y += 4
             // ---- filter row ----
             val checkLabel = L10n.s("iustitia.screen.playerHistory.checkFilter", checkFilter ?: L10n.s("iustitia.screen.playerHistory.filterAll"))
             val timeLabel = L10n.s("iustitia.screen.playerHistory.timeFilter", timeLabel())
-            val checkW = tr.getWidth(Text.literal(checkLabel)) + 2
-            context.drawTextWithShadow(tr, Text.literal(checkLabel), x, y, WHITE)
-            context.drawTextWithShadow(tr, Text.literal(timeLabel), x + checkW + 12, y, WHITE)
+            val checkW = tr.getWidth(Component.literal(checkLabel)) + 2
+            context.drawTextWithShadow(tr, Component.literal(checkLabel), x, y, WHITE)
+            context.drawTextWithShadow(tr, Component.literal(timeLabel), x + checkW + 12, y, WHITE)
             filterY = y
             filterCheckX = x; filterCheckW = checkW
-            filterTimeX = x + checkW + 12; filterTimeW = tr.getWidth(Text.literal(timeLabel)) + 2
+            filterTimeX = x + checkW + 12; filterTimeW = tr.getWidth(Component.literal(timeLabel)) + 2
             y += 16
             // ---- timeline body (#1) ----
             val bodyTop = y
@@ -137,7 +137,7 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
                         val f = item.flag
                         context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.flagRow", f.tick, f.label, NumFmt.d(digits = 1, v = f.vl)), x + 2, ry + 2, WHITE)
                         val ev = f.evidence
-                        if (ev != null) context.drawTextWithShadow(tr, Text.literal("§7    " + evidenceLine(ev)), x + 2, ry + 12, WHITE)
+                        if (ev != null) context.drawTextWithShadow(tr, Component.literal("§7    " + evidenceLine(ev)), x + 2, ry + 12, WHITE)
                     }
                 }
             }
@@ -158,7 +158,7 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
     private var filterCheckX: Int = 0; private var filterCheckW: Int = 0
     private var filterTimeX: Int = 0; private var filterTimeW: Int = 0
 
-    override fun mouseClicked(click: Click, button: Boolean): Boolean {
+    override fun mouseClicked(click: MouseButtonEvent, button: Boolean): Boolean {
         try {
             if (super.mouseClicked(click, button)) return true
             if (button) return false

@@ -1,9 +1,9 @@
 package dev.iustitia.mixin
 
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.input.Input
-import net.minecraft.client.network.ClientPlayerEntity
-import net.minecraft.util.PlayerInput
+import net.minecraft.client.player.ClientInput
+import net.minecraft.client.player.LocalPlayer
+import net.minecraft.world.entity.player.ClientInput
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.Shadow
 import org.spongepowered.asm.mixin.injection.At
@@ -47,11 +47,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * + the `input` field are verified against the named jar; `defaultRequire: 1` means a mismatch fails
  * launch — the build can't confirm mixin-apply, only a live client run can.
  */
-@Mixin(ClientPlayerEntity::class)
+@Mixin(LocalPlayer::class)
 class ClientPlayerEntityMixin {
 
     @field:Shadow
-    var input: Input? = null
+    var input: ClientInput? = null
 
     @Inject(method = ["tickMovement"], at = [At("HEAD")])
     private fun iustitia_suppressReplayMovement(ci: CallbackInfo) {
@@ -65,7 +65,7 @@ class ClientPlayerEntityMixin {
                 // Suppressed whenever a replay/clip is active (every mode incl. Legacy playclip) so the
                 // player never walks server-side while spectating a rewind/clip. Mouse-look (rotation)
                 // is untouched so the user can still look around in modes with no freecam (Legacy, /ius replay).
-                input?.playerInput = PlayerInput.DEFAULT
+                input?.playerInput = Input.DEFAULT
             }
         } catch (_: Throwable) {
             // fail-open: leave the player's input as-is (worst case = a one-tick walk, never a crash)

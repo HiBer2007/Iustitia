@@ -1,7 +1,7 @@
 package dev.iustitia.selftest
 
-import net.minecraft.block.Blocks
-import net.minecraft.world.GameMode
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.GameType
 
 /**
  * Guard scenarios for the narrowed creative/spectator flight exemption (PR #37,
@@ -44,7 +44,7 @@ object CreativeFlightScenarios {
         "legit-creative-flight", Pass.LEGIT, "vanilla", setOf(Tags.MOVEMENT, Tags.GUARD),
     ) { b ->
         val bot = b.bot("CreativeFlyer", 0.0, 0.0)
-        bot.gameMode(GameMode.CREATIVE)
+        bot.gameMode(GameType.CREATIVE)
         b.expectQuiet(bot, "flyEnvelope", "speedEnvelope", "noFallDamage")
         val base = b.groundY + 8.0
         var t = 0
@@ -77,7 +77,7 @@ object CreativeFlightScenarios {
     ) { b ->
         val bot = b.bot("CreativeReach", 0.0, 0.0)
         val victim = b.bot("Target", 0.0, 6.0)
-        bot.gameMode(GameMode.CREATIVE)
+        bot.gameMode(GameType.CREATIVE)
         b.expect(bot, "reach", mustAlert = true)
         b.strike(bot, victim, every = 5, aimYaw = 0f)
         b.runFor(180)
@@ -92,7 +92,7 @@ object CreativeFlightScenarios {
     ) { b ->
         val g = b.groundY
         val bot = b.bot("SpectatorPhaser", 30.0, 0.0)
-        bot.gameMode(GameMode.SPECTATOR)
+        bot.gameMode(GameType.SPECTATOR)
         b.expectQuiet(bot, "phaseClip")
         // the same solid 2x2x2 pocket the survival twin travels inside
         b.fill(30, g.toInt(), 0, 31, (g + 2).toInt(), 1, Blocks.STONE)

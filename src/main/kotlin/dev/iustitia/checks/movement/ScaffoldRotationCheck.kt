@@ -11,8 +11,8 @@ import dev.iustitia.math.Vectors
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.TrackedPlayer
 import dev.iustitia.world.WorldQueries
-import net.minecraft.client.MinecraftClient
-import net.minecraft.item.BlockItem
+import net.minecraft.client.Minecraft
+import net.minecraft.world.item.BlockItem
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -133,7 +133,7 @@ class ScaffoldRotationCheck : Check() {
         // chunk borders, per the chunk-unloaded-never-FP rule. isSolidBelow returns false on
         // unloaded chunks, so without this guard a missing-in-unloaded-chunk floor would
         // false-flag a godbridge over the edge of loaded terrain.
-        val world = MinecraftClient.getInstance().world
+        val world = Minecraft.getInstance().world
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         if (world == null || !WorldQueries.isChunkLoaded(world, bx, bz)) { ctx.streak = 0; return }

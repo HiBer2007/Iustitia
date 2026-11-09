@@ -88,7 +88,7 @@ object RecordManager {
         var mapOn = false
         if (cfg.clipChunkWorld) {
             try {
-                val p = net.minecraft.client.MinecraftClient.getInstance().player
+                val p = net.minecraft.client.Minecraft.getInstance().player
                 if (p != null) {
                     val radius = try { cfg.clipChunkRadius } catch (_: Throwable) { 8 }
                     val pcx = Math.floorDiv(p.x.toInt(), 16)
@@ -138,7 +138,7 @@ object RecordManager {
         if (dev.iustitia.compat.CompanionMods.snapClip) return
         try {
             val cfg = ConfigManager.config   // one config snapshot for the whole tick
-            val mc = net.minecraft.client.MinecraftClient.getInstance()
+            val mc = net.minecraft.client.Minecraft.getInstance()
             val snaps = ArrayList<ReplayBuffer.PlayerSnap>(minOf(tracked.size + 1, MAX_PLAYERS_PER_FRAME))
             // Self first, exactly as the rolling buffer does it (see [ReplayBuffer.buildSelfSnap]): a
             // recording is a clip too, so your own body has to be in it. Added ahead of the tracked
@@ -240,7 +240,7 @@ object RecordManager {
             val cfg = ConfigManager.config
             try { ChunkRollingCapture.clearSegment(RECORD_SEGMENT_ID) } catch (_: Throwable) {}
             if (!cfg.clipChunkWorld) return
-            val p = net.minecraft.client.MinecraftClient.getInstance().player ?: return
+            val p = net.minecraft.client.Minecraft.getInstance().player ?: return
             val radius = try { cfg.clipChunkRadius } catch (_: Throwable) { 8 }
             val pcx = Math.floorDiv(p.x.toInt(), 16)
             val pcz = Math.floorDiv(p.z.toInt(), 16)
@@ -266,7 +266,7 @@ object RecordManager {
 
         val map = try { ChunkRollingCapture.snapshotForSegment(RECORD_SEGMENT_ID) } catch (_: Throwable) { null }
         val dimKey = try {
-            net.minecraft.client.MinecraftClient.getInstance().world?.registryKey?.value?.toString() ?: "?"
+            net.minecraft.client.Minecraft.getInstance().world?.registryKey?.value?.toString() ?: "?"
         } catch (_: Throwable) { "?" }
         if (map != null) try { map.dimension = dimKey } catch (_: Throwable) {}
 

@@ -6,8 +6,8 @@ import com.google.gson.JsonParser
 import dev.iustitia.Iustitia
 import dev.iustitia.config.ConfigManager
 import net.fabricmc.loader.api.FabricLoader
-import net.minecraft.client.MinecraftClient
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -101,7 +101,7 @@ object ChatHistory {
 
     /** The current server-address key (`currentServerEntry?.address` ?: `"singleplayer"`). Fail-open. */
     private fun serverKey(): String = try {
-        MinecraftClient.getInstance().currentServerEntry?.address?.takeIf { it.isNotBlank() } ?: "singleplayer"
+        Minecraft.getInstance().currentServerEntry?.address?.takeIf { it.isNotBlank() } ?: "singleplayer"
     } catch (_: Throwable) { "singleplayer" }
 
     private fun sanitize(address: String): String = address.replace(Regex("[^A-Za-z0-9_.-]"), "_")
@@ -148,7 +148,7 @@ object ChatHistory {
      * message` as a `GameMessageS2CPacket` with no sender UUID. [DecoratedChatParser] recovers the
      * `(username, message)` structurally and resolves the UUID from the tab list. Fail-open.
      */
-    fun captureDecorated(text: Text) {
+    fun captureDecorated(text: Component) {
         if (!enabled) return
         try {
             val p = DecoratedChatParser.parseGameMessage(text, captureUnknown) ?: return
@@ -162,7 +162,7 @@ object ChatHistory {
      * when a server uses it. [DecoratedChatParser] resolves the display name → clean username +
      * UUID. Fail-open.
      */
-    fun captureProfileless(nameText: Text, messageText: Text) {
+    fun captureProfileless(nameText: Component, messageText: Component) {
         if (!enabled) return
         try {
             val p = DecoratedChatParser.parseProfileless(nameText, messageText, captureUnknown) ?: return

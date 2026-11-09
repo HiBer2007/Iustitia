@@ -4,10 +4,10 @@ import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.Click
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.input.MouseButtonEvent
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 import java.util.UUID
 
 /**
@@ -57,7 +57,7 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
         }
     }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             context.fill(0, 0, this.width, this.height, BG)
             super.render(context, mouseX, mouseY, delta)
@@ -65,7 +65,7 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
             val s = summary
             context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.header"), 10, 10, WHITE)
             if (compact) {
-                context.drawTextWithShadow(tr, Text.literal(
+                context.drawTextWithShadow(tr, Component.literal(
                     L10n.s("iustitia.screen.session.compact", s.total, s.green, s.yellow, s.red, s.totalAlerts) +
                     (s.peakName?.let { L10n.s("iustitia.screen.session.peak", it, s.peakScore) } ?: "")
                 ), 10, 28, WHITE)
@@ -83,13 +83,13 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
                 context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.noAlerts"), 14, y, WHITE)
             } else {
                 s.top.forEach { (name, count) ->
-                    context.drawTextWithShadow(tr, Text.literal(" §f$name §7$count"), 14, y, WHITE); y += 12
+                    context.drawTextWithShadow(tr, Component.literal(" §f$name §7$count"), 14, y, WHITE); y += 12
                 }
             }
         } catch (_: Throwable) {}
     }
 
-    override fun mouseClicked(click: Click, button: Boolean): Boolean {
+    override fun mouseClicked(click: MouseButtonEvent, button: Boolean): Boolean {
         try { if (super.mouseClicked(click, button)) return true } catch (_: Throwable) {}
         return false
     }

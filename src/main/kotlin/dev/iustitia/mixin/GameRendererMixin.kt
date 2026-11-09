@@ -1,8 +1,8 @@
 package dev.iustitia.mixin
 
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.option.Perspective
-import net.minecraft.client.render.GameRenderer
+import net.minecraft.client.CameraType
+import net.minecraft.client.renderer.GameRenderer
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Redirect
@@ -40,7 +40,7 @@ class GameRendererMixin {
             ordinal = 0,
         ),
     )
-    private fun iustitia_hideHandInFreecam(perspective: Perspective): Boolean = try {
+    private fun iustitia_hideHandInFreecam(perspective: CameraType): Boolean = try {
         if (ReplayState.freecamActive) false else perspective.isFirstPerson()
     } catch (_: Throwable) {
         perspective.isFirstPerson()

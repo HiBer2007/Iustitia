@@ -1,11 +1,11 @@
 package dev.iustitia.mixin
 
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.render.Frustum
-import net.minecraft.client.render.entity.EntityRenderer
-import net.minecraft.entity.Entity
+import net.minecraft.client.Minecraft
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.renderer.culling.Frustum
+import net.minecraft.client.renderer.entity.EntityRenderer
+import net.minecraft.world.entity.Entity
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -94,8 +94,8 @@ abstract class EntityRendererMixin {
             // self branch would make that branch unreachable (see the class doc).
             if (ReplayState.shouldHideEntity(
                     isModernChunkWorld = ReplayState.chunks != null && !ReplayState.legacyPlayclip,
-                    isSelf = entity.uuid == MinecraftClient.getInstance().player?.uuid,
-                    isOtherPlayer = entity is OtherClientPlayerEntity,
+                    isSelf = entity.uuid == Minecraft.getInstance().player?.uuid,
+                    isOtherPlayer = entity is RemotePlayer,
                 )
             ) {
                 cir.setReturnValue(false)

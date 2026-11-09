@@ -10,8 +10,8 @@ import dev.isxander.yacl3.api.controller.DoubleFieldControllerBuilder
 import dev.isxander.yacl3.api.controller.EnumControllerBuilder
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 
 /**
  * Builds the YACL config screen for [ConfigManager.config]. Bindings read/write the
@@ -165,7 +165,7 @@ object YaclScreenBuilder {
 
     private fun checkGroup(id: String, cc: IustitiaConfig.CheckConfig): OptionGroup {
         val b = OptionGroup.createBuilder()
-            .name(Text.literal(id))
+            .name(Component.literal(id))
             .option(bool("iustitia.cfg.option.enabled.name", "iustitia.cfg.option.checkEnabled.desc", { cc.enabled }, id) { cc.enabled = it })
             .option(double("iustitia.cfg.option.setbackVL.name", "iustitia.cfg.option.setbackVL.desc", { cc.setbackVL }, 0.0, 100.0) { cc.setbackVL = it })
             .option(double("iustitia.cfg.option.decayPerTick.name", "iustitia.cfg.option.decayPerTick.desc", { cc.decay }, 0.0, 5.0) { cc.decay = it })

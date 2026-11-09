@@ -150,7 +150,7 @@ class IustitiaClientMod : ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick {
             try {
                 if (!ConfigManager.config.wizardCompleted) {
-                    val mc = net.minecraft.client.MinecraftClient.getInstance()
+                    val mc = net.minecraft.client.Minecraft.getInstance()
                     if (mc.currentScreen == null && mc.world != null && mc.player != null) {
                         mc.execute { try { mc.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
                     }

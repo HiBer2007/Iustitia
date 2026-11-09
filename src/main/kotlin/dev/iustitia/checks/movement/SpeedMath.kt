@@ -1,7 +1,7 @@
 package dev.iustitia.checks.movement
 
-import net.minecraft.block.BlockState
-import net.minecraft.block.Blocks
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.Blocks
 
 /**
  * Speed-cap math shared by [LongJumpCheck] and [SpeedEnvelopeCheck] so the two caps can never

@@ -2,10 +2,10 @@ package dev.iustitia.mixin
 
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.gui.hud.PlayerListHud
-import net.minecraft.client.network.PlayerListEntry
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.components.PlayerTabOverlay
+import net.minecraft.client.multiplayer.PlayerInfo
+import net.minecraft.network.chat.Component
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -37,11 +37,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
  * successful mixin APPLY at launch is expected; if a future mapping rename breaks it, the mixin
  * apply failure shows at launch (not a crash — the tab just shows un-badged names, fail-open).
  */
-@Mixin(PlayerListHud::class)
+@Mixin(PlayerTabOverlay::class)
 class PlayerListHudMixin {
 
     @Inject(method = ["getPlayerName"], at = [At("RETURN")], cancellable = true)
-    private fun iustitia_prefixTabName(entry: PlayerListEntry, cir: CallbackInfoReturnable<Text>) {
+    private fun iustitia_prefixTabName(entry: PlayerInfo, cir: CallbackInfoReturnable<Component>) {
         try {
             val cfg = ConfigManager.config
             if (!cfg.tabListBadge) return
@@ -51,7 +51,7 @@ class PlayerListHudMixin {
             val uuid = entry.profile?.id ?: return
 
             // Never badge the local player's own tab row.
-            val self = MinecraftClient.getInstance().player
+            val self = Minecraft.getInstance().player
             if (self == null || uuid == self.uuid) return
 
             val tier = FlagHistory.tierFor(uuid)
@@ -62,8 +62,8 @@ class PlayerListHudMixin {
                 FlagHistory.Tier.YELLOW -> "e" to "!"
                 FlagHistory.Tier.RED -> "c" to "X"
             }
-            val prefix = Text.literal("§${color}[$glyph]§r ")
-            cir.setReturnValue(Text.empty().append(prefix).append(original))
+            val prefix = Component.literal("§${color}[$glyph]§r ")
+            cir.setReturnValue(Component.empty().append(prefix).append(original))
         } catch (_: Throwable) {
             // fail-open: leave the original name
         }

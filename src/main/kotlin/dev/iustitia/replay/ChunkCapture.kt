@@ -1,9 +1,9 @@
 package dev.iustitia.replay
 
-import net.minecraft.block.BlockState
-import net.minecraft.client.MinecraftClient
-import net.minecraft.registry.Registries
-import net.minecraft.world.chunk.ChunkStatus
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.client.Minecraft
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.world.level.chunk.status.ChunkStatus
 
 /**
  * One-shot capture of every **loaded chunk** around the local player at `/ius clip` save time, stored
@@ -15,7 +15,7 @@ import net.minecraft.world.chunk.ChunkStatus
  * ## What it stores
  *
  * For each loaded chunk within [capture]'s `radius` (default 8 → 17×17 = 289 chunks), each non-empty
- * [net.minecraft.world.chunk.ChunkSection]: a `sectionY` (world-section coord = `y shr 4`, may be
+ * [net.minecraft.world.level.chunk.LevelChunkSection]: a `sectionY` (world-section coord = `y shr 4`, may be
  * negative), a `palette: List<String>` of block registry ids (`"minecraft:stone"`, `"minecraft:air"`,
  * … — **names, not numeric state ids**, so a clip is portable across server versions and dimensions),
  * and `data: ByteArray` (4096 palette-index entries, 1 byte when the palette has ≤ 256 entries else 2
@@ -31,7 +31,7 @@ import net.minecraft.world.chunk.ChunkStatus
  * ([MAX_CAPTURE_SECTIONS]) so a max-render-distance client can't blow up the file. Unloaded chunks are
  * skipped (a chunk unloaded at save time is air in the clip — chunk-unloaded-never-FP). Any throw
  * returns null (the clip then saves chunks-null → v5 wireframe / ghosts render as before). No mixins,
- * no outgoing packets, no world edits — reads the live [net.minecraft.client.world.ClientWorld] only,
+ * no outgoing packets, no world edits — reads the live [net.minecraft.client.multiplayer.ClientLevel] only,
  * the same pattern as [TerrainCapture].
  */
 object ChunkCapture {
@@ -50,7 +50,7 @@ object ChunkCapture {
      * it is, so the suppress mixin still hides the live world and the free-cam still works in void).
      */
     fun capture(radius: Int): ChunkSnapshot? = try {
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val world = mc.world ?: return null
         val player = mc.player ?: return null
         val r = radius.coerceIn(1, 32)
@@ -93,7 +93,7 @@ object ChunkCapture {
      * chunks **incrementally** across a recording instead of in one synchronous export-time sweep.
      * Fail-open: any throw / unloaded chunk → null.
      */
-    internal fun captureChunkAt(world: net.minecraft.client.world.ClientWorld, chunkX: Int, chunkZ: Int):
+    internal fun captureChunkAt(world: net.minecraft.client.multiplayer.ClientLevel, chunkX: Int, chunkZ: Int):
             List<ChunkSnapshot.SectionRec>? = try {
         val chunk = world.chunkManager.getChunk(chunkX, chunkZ, ChunkStatus.FULL, false) ?: return null
         captureChunk(chunk, chunkX, chunkZ)
@@ -105,7 +105,7 @@ object ChunkCapture {
      * (e.g. overworld bottom section is -4). Iteration order within a section is y-major → z → x:
      * `index = (localY * 16 + localZ) * 16 + localX` — the inverse of [ChunkSnapshot.nameAt].
      */
-    internal fun captureChunk(chunk: net.minecraft.world.chunk.Chunk, chunkX: Int, chunkZ: Int):
+    internal fun captureChunk(chunk: net.minecraft.world.level.chunk.ChunkAccess, chunkX: Int, chunkZ: Int):
             List<ChunkSnapshot.SectionRec>? = try {
         val sectionArray = chunk.getSectionArray()
         if (sectionArray.isEmpty()) return emptyList()
@@ -124,7 +124,7 @@ object ChunkCapture {
     } catch (_: Throwable) { null }
 
     /** Capture one section's 4096 cells into a palette + index array. Null on throw (skip the section). */
-    private fun captureSection(sec: net.minecraft.world.chunk.ChunkSection, sectionY: Int):
+    private fun captureSection(sec: net.minecraft.world.level.chunk.LevelChunkSection, sectionY: Int):
             ChunkSnapshot.SectionRec? = try {
         val palette = LinkedHashMap<String, Int>(16)
         val idxArr = IntArray(4096)
@@ -172,11 +172,11 @@ object ChunkCapture {
      * pre-v7 default-state behaviour — recognizable block, default orientation).
      */
     internal fun stateKey(st: BlockState): String = try {
-        val id = Registries.BLOCK.getId(st.block).toString()
+        val id = BuiltInRegistries.BLOCK.getId(st.block).toString()
         val entries = st.entries
         if (entries.isEmpty()) id
         else id + "[" + entries.entries.joinToString(",") { "${it.key.name}=${it.value}" } + "]"
     } catch (_: Throwable) {
-        try { Registries.BLOCK.getId(st.block).toString() } catch (_: Throwable) { "minecraft:air" }
+        try { BuiltInRegistries.BLOCK.getId(st.block).toString() } catch (_: Throwable) { "minecraft:air" }
     }
 }

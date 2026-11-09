@@ -6,9 +6,9 @@ import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.persistence.NoteStore
 import dev.iustitia.session.SessionStats
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 import java.util.UUID
 
 /**
@@ -31,7 +31,7 @@ class TranscriptPanelScreen(
 
     override fun init() { try {} catch (_: Throwable) {} }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             val w = this.width
             // Right-edge narrow panel (~150px or 1/5 of width, whichever is smaller).
@@ -43,8 +43,8 @@ class TranscriptPanelScreen(
             var y = 6
             val tier = FlagHistory.tierFor(uuid)
             val glyph = when (tier) { FlagHistory.Tier.GREEN -> "§a[+]"; FlagHistory.Tier.YELLOW -> "§e[!]"; FlagHistory.Tier.RED -> "§c[X]" }
-            context.drawTextWithShadow(tr, Text.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
-            context.drawTextWithShadow(tr, Text.literal("$glyph §f$name"), x0 + 4, y, WHITE); y += 11
+            context.drawTextWithShadow(tr, Component.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
+            context.drawTextWithShadow(tr, Component.literal("$glyph §f$name"), x0 + 4, y, WHITE); y += 11
             val score = FlagHistory.confidenceScore(uuid)
             context.drawTextWithShadow(tr, L10n.t("iustitia.screen.transcript.tier", tier.name, score), x0 + 4, y, WHITE); y += 13
             // session taps
@@ -78,12 +78,12 @@ class TranscriptPanelScreen(
                         val m = ev?.measurement?.let { " §b${fmt2(it)}" } ?: ""
                         "§7${ageSec}s §f${f.checkId}$m"
                     } else full
-                    context.drawTextWithShadow(tr, Text.literal(line), x0 + 4, y, WHITE)
+                    context.drawTextWithShadow(tr, Component.literal(line), x0 + 4, y, WHITE)
                     y += 11
                     if (y > this.height - 12) break
                 }
             }
-            context.drawTextWithShadow(tr, Text.literal("§8" + if (ConfigManager.config.compactMode) L10n.s("iustitia.screen.transcript.compact") else ""), x0 + 4, this.height - 12, WHITE)
+            context.drawTextWithShadow(tr, Component.literal("§8" + if (ConfigManager.config.compactMode) L10n.s("iustitia.screen.transcript.compact") else ""), x0 + 4, this.height - 12, WHITE)
         } catch (_: Throwable) {}
     }
 

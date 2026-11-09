@@ -3,15 +3,15 @@ package dev.iustitia.replay
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.config.IustitiaConfig
 import dev.iustitia.tracking.TrackedPlayer
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.world.ClientWorld
-import net.minecraft.entity.EquipmentSlot
-import net.minecraft.entity.Entity
-import net.minecraft.entity.LivingEntity
-import net.minecraft.entity.player.PlayerEntity
-import net.minecraft.item.ItemStack
-import net.minecraft.registry.Registries
-import net.minecraft.world.World
+import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.world.entity.EquipmentSlot
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.world.level.Level
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -176,7 +176,7 @@ object ReplayBuffer {
 
     // --- segment tracking (v13+) ---
     private var currentSegmentId: Int = -1
-    private var lastWorld: World? = null
+    private var lastWorld: Level? = null
     private var lastX: Double = 0.0
     private var lastZ: Double = 0.0
     private val segmentDimensions: HashMap<Int, String> = HashMap()
@@ -206,7 +206,7 @@ object ReplayBuffer {
     fun recordTick(tick: Int, tracked: Collection<TrackedPlayer>) {
         if (!enabled) return
         try {
-            val mc = MinecraftClient.getInstance()
+            val mc = Minecraft.getInstance()
             val world = mc.world
             // One config snapshot for the whole tick (~8 [ConfigManager.config] getter reads collapsed
             // to one): the gates below can't disagree mid-tick if a config save swaps the snapshot
@@ -242,7 +242,7 @@ object ReplayBuffer {
      * gets a fresh id + recorded dimension key. (Chunk rolling capture is Phase 2; this only tags the
      * frames so the codec/overlay can later group them.) Fail-open.
      */
-    private fun updateSegment(mc: MinecraftClient, world: World?, cfg: IustitiaConfig) {
+    private fun updateSegment(mc: Minecraft, world: Level?, cfg: IustitiaConfig) {
         val self = mc.player
         val px = self?.x ?: 0.0
         val pz = self?.z ?: 0.0
@@ -443,13 +443,13 @@ object ReplayBuffer {
         else -> POSE_STAND
     }
 
-    private val itemIdCache = HashMap<net.minecraft.item.Item, String>()
+    private val itemIdCache = HashMap<net.minecraft.world.item.Item, String>()
 
     /** Map a live [ItemStack] to its registry-id string (`"minecraft:diamond_sword"`), or `""` for an
      *  empty/null stack. Fail-open: any read error → `""` (the ghost just shows no item in that slot). */
     private fun idOf(stack: ItemStack?): String = try {
         if (stack == null || stack.isEmpty) ""
-        else itemIdCache.getOrPut(stack.item) { Registries.ITEM.getId(stack.item).toString() }
+        else itemIdCache.getOrPut(stack.item) { BuiltInRegistries.ITEM.getId(stack.item).toString() }
     } catch (_: Throwable) { "" }
 
     /**
@@ -490,13 +490,13 @@ object ReplayBuffer {
      * draw your own body alongside everyone else's. This is the only capture path for self: the tracker
      * polls `OtherClientPlayerEntity` exclusively, so [buildSnap] never sees you.
      *
-     * [net.minecraft.client.network.ClientPlayerEntity] IS-A [PlayerEntity] and so a [LivingEntity], so
+     * [net.minecraft.client.player.LocalPlayer] IS-A [PlayerEntity] and so a [LivingEntity], so
      * every read here is the same one [buildSnap] does on a tracked player's entity. The result goes
      * into [Frame.snaps] as a normal entry — the clip format (v13) is unchanged, and the renderer, the
      * tier lookup and the playhead interpolator all key snaps by UUID, so nothing needs a self case.
      * Fail-open: null drops the self ghost for that tick, never the frame.
      */
-    internal fun buildSelfSnap(p: net.minecraft.client.network.ClientPlayerEntity): PlayerSnap? = try {
+    internal fun buildSelfSnap(p: net.minecraft.client.player.LocalPlayer): PlayerSnap? = try {
         val u = p.uuid
         val nm = p.name.string.ifEmpty { u.toString().take(8) }
         PlayerSnap(
@@ -523,7 +523,7 @@ object ReplayBuffer {
      * (`clipEntityCap`). Players are excluded (they are already in [Frame.snaps]). Fail-open: a
      * per-entity read error skips that entity.
      */
-    internal fun buildEntitySnaps(world: ClientWorld, self: net.minecraft.client.network.ClientPlayerEntity?, cfg: IustitiaConfig): List<EntitySnap> {
+    internal fun buildEntitySnaps(world: ClientLevel, self: net.minecraft.client.player.LocalPlayer?, cfg: IustitiaConfig): List<EntitySnap> {
         if (!entityCaptureEnabled(cfg)) return emptyList()
         val cap = entityCap(cfg)
         if (cap <= 0) return emptyList()
@@ -536,7 +536,7 @@ object ReplayBuffer {
             // spent on entities that will actually be captured (a dropped item / arrow never is).
             for (entity in world.entities) {
                 if (entity === self) continue
-                if (entity is PlayerEntity) continue
+                if (entity is Player) continue
                 if (entity.isRemoved) continue
                 if (!isCapturable(entity)) continue
                 val dx = entity.x - sx; val dy = entity.y - sy; val dz = entity.z - sz
@@ -582,16 +582,16 @@ object ReplayBuffer {
     /** Mirrors the type filter in [buildEntitySnap] / [buildNonLivingEntitySnap]. */
     private fun isCapturable(e: Entity): Boolean =
         e is LivingEntity ||
-            e is net.minecraft.entity.vehicle.BoatEntity ||
-            e is net.minecraft.entity.vehicle.ChestBoatEntity ||
-            e is net.minecraft.entity.vehicle.AbstractMinecartEntity
+            e is net.minecraft.world.entity.vehicle.boat.Boat ||
+            e is net.minecraft.world.entity.vehicle.boat.ChestBoat ||
+            e is net.minecraft.world.entity.vehicle.minecart.AbstractMinecart
 
     private fun snapOf(e: Entity): EntitySnap? =
         if (e is LivingEntity) buildEntitySnap(e) else buildNonLivingEntitySnap(e)
 
     private fun buildEntitySnap(e: LivingEntity): EntitySnap? = try {
         val u = e.uuid
-        val typeId = try { Registries.ENTITY_TYPE.getId(e.type).toString() } catch (_: Throwable) { return null }
+        val typeId = try { BuiltInRegistries.ENTITY_TYPE.getId(e.type).toString() } catch (_: Throwable) { return null }
         if (typeId.isEmpty()) return null
         EntitySnap(
             typeId,
@@ -607,14 +607,14 @@ object ReplayBuffer {
 
     /** Non-living captures (boats / minecarts) have no pose/health — stand + full health. Only those
      *  two vehicle families are captured (a dropped item / arrow / painting is noise). */
-    private fun buildNonLivingEntitySnap(e: net.minecraft.entity.Entity): EntitySnap? = try {
-        if (e !is net.minecraft.entity.vehicle.BoatEntity &&
-            e !is net.minecraft.entity.vehicle.ChestBoatEntity &&
-            e !is net.minecraft.entity.vehicle.AbstractMinecartEntity) {
+    private fun buildNonLivingEntitySnap(e: net.minecraft.world.entity.Entity): EntitySnap? = try {
+        if (e !is net.minecraft.world.entity.vehicle.boat.Boat &&
+            e !is net.minecraft.world.entity.vehicle.boat.ChestBoat &&
+            e !is net.minecraft.world.entity.vehicle.minecart.AbstractMinecart) {
             return null
         }
         val u = e.uuid
-        val typeId = try { Registries.ENTITY_TYPE.getId(e.type).toString() } catch (_: Throwable) { return null }
+        val typeId = try { BuiltInRegistries.ENTITY_TYPE.getId(e.type).toString() } catch (_: Throwable) { return null }
         if (typeId.isEmpty()) return null
         EntitySnap(
             typeId,

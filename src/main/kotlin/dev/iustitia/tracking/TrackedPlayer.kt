@@ -3,9 +3,9 @@ package dev.iustitia.tracking
 import dev.iustitia.checks.movement.BlockLookupBudget
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.world.WorldQueries
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.world.ClientWorld
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -19,15 +19,15 @@ import java.util.UUID
 class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
 
     /** Live entity handle, re-resolved each tick; null after despawn until purge. */
-    var entity: OtherClientPlayerEntity? = null
+    var entity: RemotePlayer? = null
 
     val ring = PositionRingBuffer(24)
 
     // --- position / deltas (server-space, polled) ---
-    var pos: Vec3d = Vec3d.ZERO
-    var lastPos: Vec3d = Vec3d.ZERO
+    var pos: Vec3 = Vec3.ZERO
+    var lastPos: Vec3 = Vec3.ZERO
     /** Full vec delta this tick (pos - lastPos). */
-    var delta: Vec3d = Vec3d.ZERO
+    var delta: Vec3 = Vec3.ZERO
     /** Previous tick's vertical delta — used by FlyEnvelope physics: expectedY=(prevDeltaY-0.08)*0.98. */
     var prevDeltaY: Double = 0.0
     var deltaY: Double = 0.0
@@ -69,7 +69,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
     // tick driver and render mixins. @Volatile is defense-in-depth: it guarantees a fresh
     // read even if a future call site bypasses the defer queue, and costs nothing.
 
-    @Volatile var velocity: Vec3d = Vec3d.ZERO
+    @Volatile var velocity: Vec3 = Vec3.ZERO
     /** Tick of the last received EntityVelocityUpdateS2CPacket (velocity-exemption window). */
     @Volatile var velocityTick: Int = -1000
     /** Tick of the last detected large position jump (>8b) — movement/reach teleport exemption. */
@@ -130,7 +130,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
     @Volatile var digTick: Int = -10000
 
     /** Centre of the block being broken, for the orphan-radius arm of [digging]. */
-    @Volatile var digPos: Vec3d = Vec3d.ZERO
+    @Volatile var digPos: Vec3 = Vec3.ZERO
 
     /** True while a dig is live: [digActive] and still near the block.
      *
@@ -179,7 +179,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
 
     /** True iff the chunk containing the player's current block is loaded. Cached per tick —
      *  the first caller per tick computes it, the rest reuse. Identical to [WorldQueries.isChunkLoaded]. */
-    fun chunkLoadedCached(world: ClientWorld?, tick: Int, bx: Int, bz: Int): Boolean {
+    fun chunkLoadedCached(world: ClientLevel?, tick: Int, bx: Int, bz: Int): Boolean {
         if (wqTick != tick) {
             wqTick = tick
             wqChunkLoaded = WorldQueries.isChunkLoaded(world, bx, bz)
@@ -191,7 +191,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
     /** True iff the block at the player's feet (bx, by, bz) is liquid. Cached per tick — the
      *  first caller per tick computes it, the rest reuse. Returns false when the chunk is not
      *  loaded (matches [WorldQueries.isLiquidAt] fail-open). */
-    fun feetLiquidCached(world: ClientWorld?, tick: Int, bx: Int, by: Int, bz: Int): Boolean {
+    fun feetLiquidCached(world: ClientLevel?, tick: Int, bx: Int, by: Int, bz: Int): Boolean {
         chunkLoadedCached(world, tick, bx, bz) // ensures the tick stamp + chunkLoaded are set
         if (!wqChunkLoaded) return false
         if (!wqFeetLiquidSet) {
@@ -217,7 +217,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
      *  ticks and reused in between (rate-limit verdict-cache). Identical return value to a direct
      *  [WorldQueries.isSolidBelow] call; only *when* the expensive lookup runs changes. */
     fun solidBelowCached(
-        world: ClientWorld?, x: Double, y: Double, z: Double, offset: Double, tick: Int,
+        world: ClientLevel?, x: Double, y: Double, z: Double, offset: Double, tick: Int,
     ): Boolean {
         if (solidBelowTick == -10000 || tick - solidBelowTick >= BlockLookupBudget.RATE_LIMIT_N) {
             solidBelow = WorldQueries.isSolidBelow(world, x, y, z, offset)

@@ -1,8 +1,8 @@
 package dev.iustitia.render
 
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.util.DefaultSkinHelper
-import net.minecraft.entity.player.SkinTextures
+import net.minecraft.client.Minecraft
+import net.minecraft.client.resources.DefaultPlayerSkin
+import net.minecraft.world.entity.player.PlayerSkin
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ## How it resolves
  *
- * Vanilla already loads every other player's skin into the tab-list [net.minecraft.client.network.PlayerListEntry]
- * on join (async Mojang fetch, wrapped by [net.minecraft.client.texture.PlayerSkinProvider]).
+ * Vanilla already loads every other player's skin into the tab-list [net.minecraft.client.multiplayer.PlayerInfo]
+ * on join (async Mojang fetch, wrapped by [net.minecraft.client.resources.SkinManager]).
  * [PlayerListEntry.getSkinTextures] returns the loaded [SkinTextures], or the per-UUID **default**
  * ([DefaultSkinHelper.getSkinTextures] — Steve/Alex chosen by UUID hash) until the real skin lands.
  * So resolution is a synchronous read of an entry vanilla keeps warm — NO direct skin-provider call,
@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ReplaySkins {
 
-    private class Holder(var skin: SkinTextures, var resolved: Boolean, var streak: Int)
+    private class Holder(var skin: PlayerSkin, var resolved: Boolean, var streak: Int)
 
     private val cache = ConcurrentHashMap<UUID, Holder>()
 
@@ -52,22 +52,22 @@ object ReplaySkins {
      * (first frames after a replay starts for a given player, or an uncached UUID): query the tab list.
      * Fail-open to the Steve default on any throw so a ghost always renders.
      */
-    fun resolve(uuid: UUID): SkinTextures {
+    fun resolve(uuid: UUID): PlayerSkin {
         try {
             val h = cache[uuid]
             if (h != null && h.resolved) return h.skin
             return resolveSlow(uuid, h)
         } catch (_: Throwable) {
-            return DefaultSkinHelper.getSteve()
+            return DefaultPlayerSkin.getSteve()
         }
     }
 
-    private fun resolveSlow(uuid: UUID, existing: Holder?): SkinTextures {
-        val default = DefaultSkinHelper.getSkinTextures(uuid)
+    private fun resolveSlow(uuid: UUID, existing: Holder?): PlayerSkin {
+        val default = DefaultPlayerSkin.getSkinTextures(uuid)
         val h = existing ?: cache.computeIfAbsent(uuid) { Holder(default, false, 0) }
         if (h.resolved) return h.skin
 
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val entry = try { mc.networkHandler?.getPlayerListEntry(uuid) } catch (_: Throwable) { null }
         if (entry == null) {
             // Not in the tab list (offline / out of range) — lock in the per-UUID default now.

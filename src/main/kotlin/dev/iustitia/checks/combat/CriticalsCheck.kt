@@ -11,7 +11,7 @@ import dev.iustitia.math.MathUtil
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.LagCombatCorrelator
 import dev.iustitia.tracking.TrackedPlayer
-import net.minecraft.item.MaceItem
+import net.minecraft.world.item.MaceItem
 import java.util.ArrayDeque
 import java.util.UUID
 import kotlin.math.abs

@@ -9,15 +9,15 @@ import dev.iustitia.event.HurtSignal
 import dev.iustitia.event.SwingSignal
 import dev.iustitia.event.VelocitySignal
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
-import net.minecraft.block.Block
-import net.minecraft.block.Blocks
-import net.minecraft.entity.EquipmentSlot
-import net.minecraft.item.ItemStack
-import net.minecraft.item.Items
-import net.minecraft.sound.SoundCategory
-import net.minecraft.util.Hand
-import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.Vec3d
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.entity.EquipmentSlot
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
+import net.minecraft.sounds.SoundSource
+import net.minecraft.world.InteractionHand
+import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -72,7 +72,7 @@ object SelfTest {
         val name: String,
         val uuid: UUID,
     ) {
-        internal var entity: net.minecraft.client.network.OtherClientPlayerEntity? = null
+        internal var entity: net.minecraft.client.player.RemotePlayer? = null
 
         /**
          * Move the bot to an absolute position (instant, one tick). Movement checks
@@ -124,21 +124,21 @@ object SelfTest {
          * never leak across scenarios; bot UUIDs are deterministic per name, making a stale
          * entry inside one scenario idempotent rather than surprising.
          */
-        fun gameMode(mode: net.minecraft.world.GameMode) {
+        fun gameMode(mode: net.minecraft.world.level.GameType) {
             ClientThread.runOnClient { mc ->
                 val handler = mc.networkHandler ?: error("no network handler -- create the gametest world first")
                 val profile = com.mojang.authlib.GameProfile(uuid, name)
-                val entry = net.minecraft.network.packet.s2c.play.PlayerListS2CPacket.Entry(
+                val entry = net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.Entry(
                     uuid, profile, true, 0, mode, null, true, 0, null,
                 )
-                val packet = net.minecraft.network.packet.s2c.play.PlayerListS2CPacket(
+                val packet = net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket(
                     java.util.EnumSet.of(
-                        net.minecraft.network.packet.s2c.play.PlayerListS2CPacket.Action.ADD_PLAYER,
-                        net.minecraft.network.packet.s2c.play.PlayerListS2CPacket.Action.UPDATE_GAME_MODE,
+                        net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
+                        net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE,
                     ),
                     emptyList(),
                 )
-                val field = net.minecraft.network.packet.s2c.play.PlayerListS2CPacket::class.java
+                val field = net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket::class.java
                     .getDeclaredField("entries")
                 field.isAccessible = true
                 field.set(packet, listOf(entry))
@@ -182,7 +182,7 @@ object SelfTest {
                         animationId = 0,
                     )
                 )
-                entity?.swingHand(Hand.MAIN_HAND)
+                entity?.swingHand(InteractionHand.MAIN_HAND)
             }
         }
 
@@ -200,7 +200,7 @@ object SelfTest {
 
         /** Inject a velocity update (knockback) for this bot. */
         fun velocity(vx: Double, vy: Double, vz: Double) {
-            publishFromClient { VelocitySignal(uuid, Iustitia.tickCounter, Vec3d(vx, vy, vz)) }
+            publishFromClient { VelocitySignal(uuid, Iustitia.tickCounter, Vec3(vx, vy, vz)) }
         }
 
         /**
@@ -314,7 +314,7 @@ object SelfTest {
          */
         fun startUsing() {
             ClientThread.runOnClient { _ ->
-                try { entity?.setCurrentHand(Hand.MAIN_HAND) } catch (_: Throwable) { }
+                try { entity?.setCurrentHand(InteractionHand.MAIN_HAND) } catch (_: Throwable) { }
                 setUsingItemBit(true)
             }
         }
@@ -341,7 +341,7 @@ object SelfTest {
         private fun setUsingItemBit(on: Boolean) {
             val e = entity ?: return
             try {
-                val m = net.minecraft.entity.LivingEntity::class.java.getDeclaredMethod(
+                val m = net.minecraft.world.entity.LivingEntity::class.java.getDeclaredMethod(
                     "setLivingFlag", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
                 )
                 m.isAccessible = true
@@ -466,7 +466,7 @@ object SelfTest {
                 val world = mc.world ?: error("no client world -- create the gametest world first")
                 val uuid = UUID.nameUUIDFromBytes("iustitia-selftest-$unique".toByteArray())
                 val profile = com.mojang.authlib.GameProfile(uuid, unique)
-                val e = net.minecraft.client.network.OtherClientPlayerEntity(world, profile)
+                val e = net.minecraft.client.player.RemotePlayer(world, profile)
                 e.setPosition(x, y, z)
                 try { e.setOnGround(false) } catch (_: Throwable) { }
                 world.addEntity(e)
@@ -1046,7 +1046,7 @@ object SelfTest {
             try {
                 ClientThread.runOnClient { mc ->
                     try {
-                        val categories = SoundCategory.values()
+                        val categories = SoundSource.values()
                         val volumes = categories.map { mc.options.getSoundVolumeOption(it) }
                         // Idempotent: this is called from both the entrypoint (before anything that
                         // can throw) and runAll (API-level guarantee), and the second call must not

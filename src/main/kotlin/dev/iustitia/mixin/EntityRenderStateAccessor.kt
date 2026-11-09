@@ -1,7 +1,7 @@
 package dev.iustitia.mixin
 
-import net.minecraft.client.render.entity.state.EntityRenderState
-import net.minecraft.text.Text
+import net.minecraft.client.renderer.entity.state.EntityRenderState
+import net.minecraft.network.chat.Component
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.gen.Accessor
 
@@ -24,8 +24,8 @@ import org.spongepowered.asm.mixin.gen.Accessor
 @Mixin(EntityRenderState::class)
 interface EntityRenderStateAccessor {
     @Accessor("displayName")
-    fun iustitia_getDisplayName(): Text?
+    fun iustitia_getDisplayName(): Component?
 
     @Accessor("displayName")
-    fun iustitia_setDisplayName(value: Text)
+    fun iustitia_setDisplayName(value: Component)
 }

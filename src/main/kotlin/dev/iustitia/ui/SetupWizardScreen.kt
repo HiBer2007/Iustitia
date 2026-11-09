@@ -3,10 +3,10 @@ package dev.iustitia.ui
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.config.PresetManager
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.Click
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.input.MouseButtonEvent
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 
 /**
  * #13 (first-launch wizard): a one-shot manual-render screen shown when `wizardCompleted` is false
@@ -104,7 +104,7 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
         return Layout(headerY, rows, Box(x, y, BOX_W, SKIP_H, emptyList()))
     }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             context.fill(0, 0, this.width, this.height, BG)
             super.render(context, mouseX, mouseY, delta)
@@ -112,29 +112,29 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
             val cx = this.width / 2
             val l = layout()
             for ((i, line) in HEADER.withIndex()) {
-                context.drawTextWithShadow(tr, Text.literal(line), cx - tr.getWidth(line) / 2, l.headerY + i * LINE_H, WHITE)
+                context.drawTextWithShadow(tr, Component.literal(line), cx - tr.getWidth(line) / 2, l.headerY + i * LINE_H, WHITE)
             }
             for ((i, box) in l.rows.withIndex()) {
                 drawBox(context, box, mouseX, mouseY)
-                context.drawTextWithShadow(tr, Text.literal(presets[i].label), box.x + 8, box.y + 6, WHITE)
+                context.drawTextWithShadow(tr, Component.literal(presets[i].label), box.x + 8, box.y + 6, WHITE)
                 for ((j, line) in box.lines.withIndex()) {
-                    context.drawTextWithShadow(tr, Text.literal("§7$line"), box.x + 8, box.y + 16 + j * LINE_H, WHITE)
+                    context.drawTextWithShadow(tr, Component.literal("§7$line"), box.x + 8, box.y + 16 + j * LINE_H, WHITE)
                 }
             }
             val s = l.skip
             drawBox(context, s, mouseX, mouseY)
-            context.drawTextWithShadow(tr, Text.literal(SKIP_LABEL), s.x + 8, s.y + 6, WHITE)
+            context.drawTextWithShadow(tr, Component.literal(SKIP_LABEL), s.x + 8, s.y + 6, WHITE)
         } catch (_: Throwable) {}
     }
 
-    private fun drawBox(context: DrawContext, box: Box, mouseX: Int, mouseY: Int) {
+    private fun drawBox(context: GuiGraphics, box: Box, mouseX: Int, mouseY: Int) {
         if (mouseX in box.x..(box.x + box.w) && mouseY in box.y..(box.y + box.h)) {
             context.fill(box.x, box.y, box.x + box.w, box.y + box.h, 0x40FFFFFF)
         }
         border(context, box.x, box.y, box.w, box.h, 0xFF333333.toInt())
     }
 
-    override fun mouseClicked(click: Click, button: Boolean): Boolean {
+    override fun mouseClicked(click: MouseButtonEvent, button: Boolean): Boolean {
         try {
             if (super.mouseClicked(click, button)) return true
             if (button) return false
@@ -156,7 +156,7 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
     override fun close() { finish() }
 
     /** 1.21.11 DrawContext has no drawBorder; draw a 1px outline with four fills. */
-    private fun border(context: DrawContext, x: Int, y: Int, w: Int, h: Int, color: Int) {
+    private fun border(context: GuiGraphics, x: Int, y: Int, w: Int, h: Int, color: Int) {
         context.fill(x, y, x + w, y + 1, color)
         context.fill(x, y + h - 1, x + w, y + h, color)
         context.fill(x, y, x + 1, y + h, color)

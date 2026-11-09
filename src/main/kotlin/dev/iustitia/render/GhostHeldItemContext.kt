@@ -1,8 +1,8 @@
 package dev.iustitia.render
 
-import net.minecraft.util.HeldItemContext
-import net.minecraft.util.math.Vec3d
-import net.minecraft.world.World
+import net.minecraft.world.entity.ItemOwner
+import net.minecraft.world.phys.Vec3
+import net.minecraft.world.level.Level
 
 /**
  * A [HeldItemContext] for a replay/clip ghost — supplies the world + the snap's position/yaw but NO
@@ -14,12 +14,12 @@ import net.minecraft.world.World
  * per-feature try/catch in [ReplayRenderer.drawModel]. Fail-open by design.
  */
 class GhostHeldItemContext(
-    private val world: World?,
-    private val pos: Vec3d,
+    private val world: Level?,
+    private val pos: Vec3,
     private val bodyYaw: Float,
-) : HeldItemContext {
-    override fun getEntityWorld(): World? = world
-    override fun getEntityPos(): Vec3d = pos
+) : ItemOwner {
+    override fun getEntityWorld(): Level? = world
+    override fun getEntityPos(): Vec3 = pos
     override fun getBodyYaw(): Float = bodyYaw
     // getEntity() stays the interface default (null) — a ghost has no live entity.
 }

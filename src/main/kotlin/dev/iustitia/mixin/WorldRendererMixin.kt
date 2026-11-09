@@ -1,12 +1,12 @@
 package dev.iustitia.mixin
 
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.network.ClientPlayerEntity
-import net.minecraft.client.render.VertexConsumerProvider
-import net.minecraft.client.render.WorldRenderer
-import net.minecraft.client.render.command.OrderedRenderCommandQueueImpl
-import net.minecraft.client.render.state.WorldRenderState
-import net.minecraft.client.util.math.MatrixStack
+import net.minecraft.client.player.LocalPlayer
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.LevelRenderer
+import net.minecraft.client.renderer.SubmitNodeStorage
+import net.minecraft.client.renderer.state.LevelRenderState
+import com.mojang.blaze3d.vertex.PoseStack
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -42,7 +42,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * vanilla behavior is unchanged. This is a cosmetic refinement; the core freecam (Task 5) works
  * without it. Runtime-only-verifiable: a build can't confirm the black-out actually clears in-game.
  */
-@Mixin(WorldRenderer::class)
+@Mixin(LevelRenderer::class)
 class WorldRendererMixin {
 
     @Redirect(
@@ -53,7 +53,7 @@ class WorldRendererMixin {
             ordinal = 0,
         ),
     )
-    private fun iustitia_freecamSpectatorNoBlackout(player: ClientPlayerEntity): Boolean = try {
+    private fun iustitia_freecamSpectatorNoBlackout(player: LocalPlayer): Boolean = try {
         if (ReplayState.freecamActive) true else player.isSpectator()
     } catch (_: Throwable) {
         player.isSpectator()
@@ -81,9 +81,9 @@ class WorldRendererMixin {
      */
     @Inject(method = ["renderBlockEntities"], at = [At("HEAD")], cancellable = true)
     private fun iustitia_suppressLiveBlockEntities(
-        matrices: MatrixStack,
-        worldRenderState: WorldRenderState,
-        queue: OrderedRenderCommandQueueImpl,
+        matrices: PoseStack,
+        worldRenderState: LevelRenderState,
+        queue: SubmitNodeStorage,
         ci: CallbackInfo,
     ) {
         try {
@@ -114,10 +114,10 @@ class WorldRendererMixin {
      */
     @Inject(method = ["renderTargetBlockOutline"], at = [At("HEAD")], cancellable = true)
     private fun iustitia_suppressLiveBlockOutline(
-        immediate: VertexConsumerProvider.Immediate,
-        matrices: MatrixStack,
+        immediate: MultiBufferSource.Immediate,
+        matrices: PoseStack,
         flag: Boolean,
-        worldRenderState: WorldRenderState,
+        worldRenderState: LevelRenderState,
         ci: CallbackInfo,
     ) {
         try {

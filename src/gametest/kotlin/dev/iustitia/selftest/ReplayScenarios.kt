@@ -101,7 +101,7 @@ object ReplayScenarios {
 
             ClientThread.runOnClient { _ -> ReplayState.setCameraMode(ReplayState.CameraMode.POV) }
             val pov = ClientThread.computeOnClient { mc -> mc.options.perspective }
-            check(pov == net.minecraft.client.option.Perspective.FIRST_PERSON) {
+            check(pov == net.minecraft.client.CameraType.FIRST_PERSON) {
                 "POV camera mode did not force first-person (perspective=$pov)"
             }
 
@@ -193,7 +193,7 @@ object ReplayScenarios {
             val bot = b.bot("Actor", 0.0, 0.0)
             // build a little scene so the captured world state has something in it
             val g = b.groundY.toInt()
-            b.fill(0, g, 2, 2, g + 1, 3, net.minecraft.block.Blocks.STONE)
+            b.fill(0, g, 2, 2, g + 1, 3, net.minecraft.world.level.block.Blocks.STONE)
             var t = 0
             b.everyTick {
                 bot.teleportTo(0.0, b.groundY, -t * 0.2)
@@ -286,7 +286,7 @@ object ReplayScenarios {
             // (1) The rolling buffer captures the local player. Matched by uuid, which is the identity
             // the ghost renderer and the playhead interpolator use, so this asserts the real contract.
             val selfFrames = ClientThread.computeOnClient { _ ->
-                val self = net.minecraft.client.MinecraftClient.getInstance().player?.uuid
+                val self = net.minecraft.client.Minecraft.getInstance().player?.uuid
                     ?: return@computeOnClient -1
                 val window = ReplayBuffer.snapshot(4, dev.iustitia.Iustitia.tickCounter)
                 window.frames.count { f -> f.snaps.any { it.uuid() == self } }
@@ -332,7 +332,7 @@ object ReplayScenarios {
             // and hiding it there would leave no body on screen at all. The snaps are stripped from a
             // real window rather than hand-built, so the shape stays honest.
             val armedWithoutSelf = ClientThread.computeOnClient { _ ->
-                val self = net.minecraft.client.MinecraftClient.getInstance().player?.uuid
+                val self = net.minecraft.client.Minecraft.getInstance().player?.uuid
                 val window = ReplayBuffer.snapshot(4, dev.iustitia.Iustitia.tickCounter)
                 val stripped = window.copy(
                     frames = window.frames.map { f ->

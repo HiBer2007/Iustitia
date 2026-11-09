@@ -7,13 +7,13 @@ import dev.iustitia.replay.ReplayBuffer
 import dev.iustitia.replay.ReplayState
 import dev.iustitia.render.OffenderCapture
 import dev.iustitia.render.WatchState
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.render.Camera
-import net.minecraft.entity.Entity
-import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.MathHelper
-import net.minecraft.util.math.Vec3d
-import net.minecraft.world.World
+import net.minecraft.client.Minecraft
+import net.minecraft.client.Camera
+import net.minecraft.world.entity.Entity
+import net.minecraft.core.BlockPos
+import net.minecraft.util.Mth
+import net.minecraft.world.phys.Vec3
+import net.minecraft.world.level.Level
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.Shadow
 import org.spongepowered.asm.mixin.injection.At
@@ -58,11 +58,11 @@ class CameraMixin {
     protected fun setRotation(yaw: Float, pitch: Float) {}
 
     @Shadow
-    protected fun setPos(pos: Vec3d) {}
+    protected fun setPos(pos: Vec3) {}
 
     @Inject(method = ["update"], at = [At("TAIL")])
     private fun iustitia_selfieCamera(
-        world: World,
+        world: Level,
         entity: Entity,
         thirdPerson: Boolean,
         other: Boolean,
@@ -89,7 +89,7 @@ class CameraMixin {
                     OffenderCapture.frameActive = false
                     return
                 }
-                val mc = MinecraftClient.getInstance()
+                val mc = Minecraft.getInstance()
                 val offender = mc.world?.getPlayerByUuid(pending.uuid)
                 if (offender == null || offender.isRemoved) {
                     // Not loaded yet this frame — re-arm so we retry next frame (still single-frame
@@ -125,7 +125,7 @@ class CameraMixin {
         val fwdX = -sin(yawRad)
         val fwdZ = cos(yawRad)
 
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val w = mc.world
         var dist = SELFIE_DIST
         if (w != null) {
@@ -139,7 +139,7 @@ class CameraMixin {
                 d -= 0.5
             }
         }
-        val camPos = Vec3d(eye.x + fwdX * dist, eye.y, eye.z + fwdZ * dist)
+        val camPos = Vec3(eye.x + fwdX * dist, eye.y, eye.z + fwdZ * dist)
         setRotation(offender.getYaw() + 180f, 0f)
         setPos(camPos)
     }
@@ -174,13 +174,13 @@ class CameraMixin {
                     if (!ReplayState.freecamActive) return false
                     // Per-frame tickDelta interpolation prev→current (vanilla spectator camera math).
                     val td = tickDelta.coerceIn(0f, 1f)
-                    val x = MathHelper.lerp(td.toDouble(), ReplayState.prevFcX, ReplayState.fcX)
-                    val y = MathHelper.lerp(td.toDouble(), ReplayState.prevFcY, ReplayState.fcY)
-                    val z = MathHelper.lerp(td.toDouble(), ReplayState.prevFcZ, ReplayState.fcZ)
-                    val yaw = MathHelper.lerpAngleDegrees(td, ReplayState.prevFcYaw, ReplayState.fcYaw)
-                    val pitch = MathHelper.lerp(td, ReplayState.prevFcPitch, ReplayState.fcPitch)
+                    val x = Mth.lerp(td.toDouble(), ReplayState.prevFcX, ReplayState.fcX)
+                    val y = Mth.lerp(td.toDouble(), ReplayState.prevFcY, ReplayState.fcY)
+                    val z = Mth.lerp(td.toDouble(), ReplayState.prevFcZ, ReplayState.fcZ)
+                    val yaw = Mth.lerpAngleDegrees(td, ReplayState.prevFcYaw, ReplayState.fcYaw)
+                    val pitch = Mth.lerp(td, ReplayState.prevFcPitch, ReplayState.fcPitch)
                     setRotation(yaw, pitch)
-                    setPos(Vec3d(x, y, z))
+                    setPos(Vec3(x, y, z))
                 }
                 ReplayState.CameraMode.POV -> {
                     // Lerped (not floor) frame: the ghost is drawn from currentFrameLerped, so the
@@ -204,8 +204,8 @@ class CameraMixin {
      *  The eye is shifted by [ReplayState.relocOffset] so the camera follows the relocated scene (the
      *  focus ghost is at the user), not the original recorded coords. */
     private fun positionReplayPov(snap: ReplayBuffer.PlayerSnap) {
-        val o = ReplayState.relocOffset ?: Vec3d.ZERO
-        val eye = Vec3d(snap.x.toDouble() + o.x, snap.y.toDouble() + EYE_HEIGHT + o.y, snap.z.toDouble() + o.z)
+        val o = ReplayState.relocOffset ?: Vec3.ZERO
+        val eye = Vec3(snap.x.toDouble() + o.x, snap.y.toDouble() + EYE_HEIGHT + o.y, snap.z.toDouble() + o.z)
         setRotation(snap.yaw, snap.pitch)
         setPos(eye)
     }
@@ -218,9 +218,9 @@ class CameraMixin {
      * shifted by [ReplayState.relocOffset] so the orbit tracks the relocated scene.
      */
     private fun positionReplayFollow(snap: ReplayBuffer.PlayerSnap) {
-        val o = ReplayState.relocOffset ?: Vec3d.ZERO
-        val eye = Vec3d(snap.x.toDouble() + o.x, snap.y.toDouble() + EYE_HEIGHT + o.y, snap.z.toDouble() + o.z)
-        val player = MinecraftClient.getInstance().player ?: return
+        val o = ReplayState.relocOffset ?: Vec3.ZERO
+        val eye = Vec3(snap.x.toDouble() + o.x, snap.y.toDouble() + EYE_HEIGHT + o.y, snap.z.toDouble() + o.z)
+        val player = Minecraft.getInstance().player ?: return
         val yawRad = player.getYaw() * (PI / 180.0)
         val fwdX = -sin(yawRad)
         val fwdZ = cos(yawRad)
@@ -237,7 +237,7 @@ class CameraMixin {
         val pitch = (-Math.toDegrees(atan2(dy.toDouble(), horiz.toDouble()))).toFloat()
 
         setRotation(yaw, pitch)
-        setPos(Vec3d(camX, camY, camZ))
+        setPos(Vec3(camX, camY, camZ))
     }
 
     /**
@@ -257,7 +257,7 @@ class CameraMixin {
             if (dev.iustitia.compat.CompanionMods.followCam) return false
             if (!WatchState.active) return false
             val uuid = WatchState.targetUuid ?: return false
-            val mc = MinecraftClient.getInstance()
+            val mc = Minecraft.getInstance()
             val offender = mc.world?.getPlayerByUuid(uuid)
             if (offender == null || offender.isRemoved) {
                 // Target left the world — flag an exit for the client-thread tick loop to restore
@@ -293,7 +293,7 @@ class CameraMixin {
      */
     private fun positionWatch(offender: Entity, tickDelta: Float) {
         val eye = offender.getCameraPosVec(tickDelta)
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val player = mc.player ?: return
         val yawRad = player.getYaw() * (PI / 180.0)
         // Behind-the-offender offset along the player's look direction (mouse-driven orbit).
@@ -312,7 +312,7 @@ class CameraMixin {
         val pitch = (-Math.toDegrees(atan2(dy.toDouble(), horiz.toDouble()))).toFloat()
 
         setRotation(yaw, pitch)
-        setPos(Vec3d(camX, camY, camZ))
+        setPos(Vec3(camX, camY, camZ))
     }
 
     private companion object {

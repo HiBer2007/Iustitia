@@ -2,9 +2,9 @@ package dev.iustitia.ui
 
 import dev.iustitia.chathist.ChatHistory
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.text.Text
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -34,7 +34,7 @@ class ChatHistPanelScreen(
 
     override fun init() { try {} catch (_: Throwable) {} }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             val w = this.width
             // A bit wider than the transcript panel (which is ~150px) so usernames + wrapped
@@ -46,9 +46,9 @@ class ChatHistPanelScreen(
             super.render(context, mouseX, mouseY, delta)
             val tr = this.textRenderer
             var y = 6
-            context.drawTextWithShadow(tr, Text.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
-            context.drawTextWithShadow(tr, Text.literal("§8chathist"), x0 + 4, y, WHITE); y += 11
-            context.drawTextWithShadow(tr, Text.literal("§f$subtitle"), x0 + 4, y, WHITE); y += 13
+            context.drawTextWithShadow(tr, Component.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
+            context.drawTextWithShadow(tr, Component.literal("§8chathist"), x0 + 4, y, WHITE); y += 11
+            context.drawTextWithShadow(tr, Component.literal("§f$subtitle"), x0 + 4, y, WHITE); y += 13
             val rows = rowsProvider().take(limit)
             context.drawTextWithShadow(tr, L10n.t("iustitia.screen.chatHist.lastMsg", rows.size), x0 + 4, y, WHITE); y += 11
             val maxW = panelW - 8
@@ -61,7 +61,7 @@ class ChatHistPanelScreen(
                     // Wrap to the panel width so a long message (or a long username) continues on
                     // the next line instead of clipping off the right edge. The timestamp + name
                     // stay on the first wrapped line; continuation lines sit flush-left under them.
-                    val wrapped = tr.wrapLines(Text.literal(full), maxW)
+                    val wrapped = tr.wrapLines(Component.literal(full), maxW)
                     for (ln in wrapped) {
                         if (y > this.height - 12) return
                         context.drawTextWithShadow(tr, ln, x0 + 4, y, WHITE)

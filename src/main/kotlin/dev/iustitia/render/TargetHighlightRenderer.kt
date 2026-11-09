@@ -3,12 +3,12 @@ package dev.iustitia.render
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.render.RenderLayers
-import net.minecraft.client.render.VertexRendering
-import net.minecraft.util.hit.EntityHitResult
-import net.minecraft.util.shape.VoxelShapes
+import net.minecraft.client.Minecraft
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.client.renderer.ShapeRenderer
+import net.minecraft.world.phys.EntityHitResult
+import net.minecraft.world.phys.shapes.Shapes
 
 /**
  * On-world target-highlight overlay (Phase B): draws a tier-colored wireframe box around the OTHER
@@ -27,7 +27,7 @@ import net.minecraft.util.shape.VoxelShapes
  * draw calls — confirmed by `WorldRenderer.renderTargetBlockOutline` passing `camera.getPos()` to
  * `drawBlockOutline`). So translating the matrix by `-cameraPos` puts world-coord geometry on
  * screen, exactly as entity renderers position themselves via `(x - cameraX, …)`. We then draw the
- * entity's world-coord [net.minecraft.entity.Entity.getBoundingBox] with no extra offset.
+ * entity's world-coord [net.minecraft.world.entity.Entity.getBoundingBox] with no extra offset.
  *
  * ## Color
  *
@@ -47,11 +47,11 @@ object TargetHighlightRenderer {
             WorldRenderEvents.AFTER_ENTITIES.register(WorldRenderEvents.AfterEntities { ctx ->
                 try {
                     if (!ConfigManager.config.targetHighlight) return@AfterEntities
-                    val mc = MinecraftClient.getInstance()
+                    val mc = Minecraft.getInstance()
                     val hit = mc.crosshairTarget
                     if (hit !is EntityHitResult) return@AfterEntities
                     val entity = hit.entity
-                    if (entity !is OtherClientPlayerEntity) return@AfterEntities
+                    if (entity !is RemotePlayer) return@AfterEntities
                     val self = mc.player
                     if (self != null && entity.uuid == self.uuid) return@AfterEntities
 
@@ -65,13 +65,13 @@ object TargetHighlightRenderer {
 
                     val camPos = ctx.gameRenderer().camera.getCameraPos()
                     val matrices = ctx.matrices()
-                    val lines = ctx.consumers().getBuffer(RenderLayers.lines())
+                    val lines = ctx.consumers().getBuffer(RenderTypes.lines())
                     matrices.push()
                     // Rotation-only view matrix → translate by -cameraPos to draw world-coord geometry.
                     matrices.translate(-camPos.x, -camPos.y, -camPos.z)
-                    VertexRendering.drawOutline(
+                    ShapeRenderer.drawOutline(
                         matrices, lines,
-                        VoxelShapes.cuboid(entity.getBoundingBox()),
+                        Shapes.cuboid(entity.getBoundingBox()),
                         0.0, 0.0, 0.0, color, 1.0f,
                     )
                     matrices.pop()

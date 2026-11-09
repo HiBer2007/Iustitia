@@ -16,8 +16,8 @@ import dev.iustitia.tracking.LagCombatCorrelator
 import dev.iustitia.ui.KeybindHubScreen
 import dev.iustitia.ui.SessionScreen
 import dev.iustitia.ui.TranscriptPanelScreen
-import net.minecraft.client.MinecraftClient
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import net.minecraft.network.chat.Component
 import java.util.UUID
 
 /**
@@ -50,7 +50,7 @@ object Iustitia {
 
     /** True iff the current thread is the client main thread (== render thread on 1.21.11). */
     fun onClientThread(): Boolean = try {
-        MinecraftClient.getInstance().isOnThread
+        Minecraft.getInstance().isOnThread
     } catch (_: Throwable) {
         // fail-open: when we can't tell (headless unit tests, very early boot), behave as
         // if on-thread so callers dispatch inline — no behavior change vs pre-queue.
@@ -201,7 +201,7 @@ object Iustitia {
         // tracker marks, world-change resets) are all applied before this tick's engine pass.
         try { drainDeferred() } catch (_: Throwable) {}
         try {
-            val client = MinecraftClient.getInstance()
+            val client = Minecraft.getInstance()
             val world = client.world
             val tracked = EntityTrackerManager.poll(world, tick)
 
@@ -290,7 +290,7 @@ object Iustitia {
      */
     fun onKeybind(id: String) {
         try {
-            val mc = MinecraftClient.getInstance()
+            val mc = Minecraft.getInstance()
             when (id) {
                 "snapshot" -> {
                     val t = crosshairTarget()
@@ -406,16 +406,16 @@ object Iustitia {
 
     /** The other player under the crosshair (uuid → name), or null. Fail-open. */
     private fun crosshairTarget(): Pair<UUID, String>? = try {
-        val client = MinecraftClient.getInstance()
+        val client = Minecraft.getInstance()
         val hit = client.crosshairTarget
-        val ent = (hit as? net.minecraft.util.hit.EntityHitResult)?.entity
-        val other = ent as? net.minecraft.client.network.OtherClientPlayerEntity
+        val ent = (hit as? net.minecraft.world.phys.EntityHitResult)?.entity
+        val other = ent as? net.minecraft.client.player.RemotePlayer
         if (other != null) other.uuid to (other.name.string.ifEmpty { other.uuid.toString().take(8) }) else null
     } catch (_: Throwable) { null }
 
     /** One chat line to the local player (fail-open). */
-    private fun chat(mc: MinecraftClient, line: String) {
-        try { mc.execute { try { mc.player?.sendMessage(Text.literal(line), false) } catch (_: Throwable) {} } }
+    private fun chat(mc: Minecraft, line: String) {
+        try { mc.execute { try { mc.player?.sendMessage(Component.literal(line), false) } catch (_: Throwable) {} } }
         catch (_: Throwable) {}
     }
 

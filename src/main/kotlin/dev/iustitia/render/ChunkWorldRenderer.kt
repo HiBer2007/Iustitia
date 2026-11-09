@@ -6,13 +6,13 @@ import com.mojang.blaze3d.textures.FilterMode
 import com.mojang.blaze3d.vertex.VertexFormat
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.render.OverlayTexture
-import net.minecraft.client.render.RenderLayer
-import net.minecraft.client.render.VertexConsumerProvider
-import net.minecraft.client.texture.SpriteAtlasTexture
-import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.texture.OverlayTexture
+import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.texture.TextureAtlas
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.joml.Vector4f
@@ -105,7 +105,7 @@ object ChunkWorldRenderer {
     /** Reused per-frame collections — render thread only ([render]/[drawStaticAll] run there and both
      *  are cleared at frame start, so leftovers from a failed frame can't leak into the next one). */
     private val collectedChunks = ArrayList<ChunkMesher.ChunkBlocks>()
-    private val staticByLayer = HashMap<RenderLayer, ArrayList<ChunkMesher.StaticChunkLayer>>()
+    private val staticByLayer = HashMap<RenderType, ArrayList<ChunkMesher.StaticChunkLayer>>()
 
     // Reused joml args for the per-frame DynamicTransforms uniform write (DynamicUniforms.write copies
     // the values synchronously, so reuse is safe — no per-frame allocation).
@@ -131,7 +131,7 @@ object ChunkWorldRenderer {
      * draw them all via [drawStaticAll] (batched, one `RenderPass` per layer); on any throw fall back
      * to [emitQuads] for each collected chunk. Fail-open per frame + per chunk.
      */
-    fun render(matrices: MatrixStack, vcp: VertexConsumerProvider, camPos: Vec3d, relocOffset: Vec3d) {
+    fun render(matrices: PoseStack, vcp: MultiBufferSource, camPos: Vec3, relocOffset: Vec3) {
         if (!ReplayState.active) return
         val snap = ReplayState.chunks ?: return
         try {
@@ -149,8 +149,8 @@ object ChunkWorldRenderer {
             // the local player with the camera's angles returns the camera's forward; verified +Z at
             // yaw 0 / pitch 0). Null when the camera/player can't be read → skip the cull this frame
             // (fail-open: render every in-range chunk, the pre-cull behaviour).
-            val mc = MinecraftClient.getInstance()
-            val fwd: Vec3d? = try {
+            val mc = Minecraft.getInstance()
+            val fwd: Vec3? = try {
                 val cam = mc.gameRenderer.camera
                 val p = mc.player
                 if (cam != null && p != null) p.getRotationVector(cam.getPitch(), cam.getYaw()) else null
@@ -208,7 +208,7 @@ object ChunkWorldRenderer {
         snap: dev.iustitia.replay.ChunkSnapshot,
         collected: ArrayList<ChunkMesher.ChunkBlocks>,
         budget: Int,
-        rdx: Double, rdy: Double, rdz: Double, fwd: Vec3d?,
+        rdx: Double, rdy: Double, rdz: Double, fwd: Vec3?,
     ): Int = try {
         if (ChunkMesher.chunkRecAt(cx, cz) == null) return 0
         val cb = ChunkMesher.bakedChunk(cx, cz)
@@ -243,7 +243,7 @@ object ChunkWorldRenderer {
      */
     private fun behindCamera(
         cb: ChunkMesher.ChunkBlocks,
-        rdx: Double, rdy: Double, rdz: Double, fwd: Vec3d,
+        rdx: Double, rdy: Double, rdz: Double, fwd: Vec3,
     ): Boolean {
         val dx0 = cb.minX - rdx; val dx1 = cb.maxX - rdx
         val dy0 = cb.minY - rdy; val dy1 = cb.maxY - rdy
@@ -266,9 +266,9 @@ object ChunkWorldRenderer {
      * caller falls back to [emitQuads]. All targets/accessors verified against the named 1.21.11 jar
      * (see the C2 plan).
      */
-    private fun drawStaticAll(chunks: List<ChunkMesher.ChunkBlocks>, matrices: MatrixStack) {
+    private fun drawStaticAll(chunks: List<ChunkMesher.ChunkBlocks>, matrices: PoseStack) {
         if (chunks.isEmpty()) return
-        val mc = MinecraftClient.getInstance()
+        val mc = Minecraft.getInstance()
         val dev = RenderSystem.getDevice() ?: throw IllegalStateException("no device")
         val fb = mc.getFramebuffer() ?: throw IllegalStateException("no framebuffer")
         val colorView = fb.getColorAttachmentView() ?: throw IllegalStateException("no color view")
@@ -279,7 +279,7 @@ object ChunkWorldRenderer {
         // "minecraft:textures/atlas/blocks.png" that BLOCK_ATLAS_TEXTURE holds. TextureManager.getTexture
         // never returns null (ResourceTexture fallback) and the block atlas is always registered.
         val atlasView = try {
-            mc.textureManager.getTexture(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE)?.getGlTextureView()
+            mc.textureManager.getTexture(TextureAtlas.BLOCK_ATLAS_TEXTURE)?.getGlTextureView()
         } catch (_: Throwable) { null } ?: throw IllegalStateException("no atlas view")
         val lightmapView = mc.gameRenderer.lightmapTextureManager.getGlTextureView()
             ?: throw IllegalStateException("no lightmap view")
@@ -355,8 +355,8 @@ object ChunkWorldRenderer {
      *  chunk has no static buffer). Fail-open per block + per quad. */
     private fun emitQuads(
         cb: ChunkMesher.ChunkBlocks,
-        matrices: MatrixStack,
-        vcp: VertexConsumerProvider,
+        matrices: PoseStack,
+        vcp: MultiBufferSource,
     ) {
         for ((layer, blocks) in cb.byLayer) {
             val vc = try { vcp.getBuffer(layer) } catch (_: Throwable) { return }

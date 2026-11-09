@@ -1,18 +1,18 @@
 package dev.iustitia.world
 
-import net.minecraft.block.BlockState
-import net.minecraft.block.Blocks
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.world.ClientWorld
-import net.minecraft.entity.vehicle.BoatEntity
-import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.Box
-import net.minecraft.util.math.Vec3d
-import net.minecraft.entity.Entity
-import net.minecraft.util.hit.BlockHitResult
-import net.minecraft.util.hit.HitResult
-import net.minecraft.world.RaycastContext
-import net.minecraft.world.chunk.ChunkStatus
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.world.entity.vehicle.boat.Boat
+import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.HitResult
+import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.chunk.status.ChunkStatus
 
 /**
  * Read-only world queries used by movement/reach sub-branches. Every method is
@@ -25,7 +25,7 @@ import net.minecraft.world.chunk.ChunkStatus
 object WorldQueries {
 
     /** True iff the chunk containing the given block coords is loaded as a FULL chunk. */
-    fun isChunkLoaded(world: ClientWorld?, blockX: Int, blockZ: Int): Boolean {
+    fun isChunkLoaded(world: ClientLevel?, blockX: Int, blockZ: Int): Boolean {
         if (world == null) return false
         return try {
             world.chunkManager.getChunk(blockX shr 4, blockZ shr 4, ChunkStatus.FULL, false) != null
@@ -35,7 +35,7 @@ object WorldQueries {
     }
 
     /** Block state at the given block coords, or null if the chunk is not loaded. */
-    fun blockStateAt(world: ClientWorld?, x: Int, y: Int, z: Int): BlockState? {
+    fun blockStateAt(world: ClientLevel?, x: Int, y: Int, z: Int): BlockState? {
         if (world == null) return null
         return try {
             if (!isChunkLoaded(world, x, z)) return null
@@ -46,7 +46,7 @@ object WorldQueries {
     }
 
     /** True iff the block at (x,y,z) has a non-empty collision shape (a standable surface). */
-    fun isSolidAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isSolidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             val pos = BlockPos(x, y, z)
@@ -66,7 +66,7 @@ object WorldQueries {
      * without weakening detection of phasing through a real wall. Partial-block phase (through
      * stairs/slabs/fences) is not caught — an acceptable, rare trade for losing a large FP class.
      */
-    fun isFullCubeSolidAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isFullCubeSolidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             if (state.isAir) return false
@@ -88,7 +88,7 @@ object WorldQueries {
      * Used by the onGround proxy: `|Δy| < 0.01 && isSolidBelow(0.05)` → grounded.
      * Scans a small vertical band so a 0.05 floor gap still counts as supported.
      */
-    fun isSolidBelow(world: ClientWorld?, x: Double, y: Double, z: Double, offset: Double): Boolean {
+    fun isSolidBelow(world: ClientLevel?, x: Double, y: Double, z: Double, offset: Double): Boolean {
         return try {
             val bx = Math.floor(x).toInt()
             val bz = Math.floor(z).toInt()
@@ -109,7 +109,7 @@ object WorldQueries {
      * the center-only query reads as airborne. The center column is tested first, so the common
      * supported case costs the same as [isSolidBelow]. Fail-open (false) like every query here.
      */
-    fun isSolidBelowFootprint(world: ClientWorld?, x: Double, y: Double, z: Double, offset: Double): Boolean {
+    fun isSolidBelowFootprint(world: ClientLevel?, x: Double, y: Double, z: Double, offset: Double): Boolean {
         return try {
             val baseY = Math.floor(y - offset).toInt()
             Footprint.columns(x, z).any { (bx, bz) ->
@@ -121,7 +121,7 @@ object WorldQueries {
     }
 
     /** True iff the block at (x,y,z) is a liquid (water/lava source or flowing). */
-    fun isLiquidAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isLiquidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             state.isOf(Blocks.WATER) || state.isOf(Blocks.LAVA) || !state.fluidState.isEmpty
@@ -131,10 +131,10 @@ object WorldQueries {
     }
 
     /** True iff the block at (x,y,z) is climbable (ladder / vine / scaffolding). */
-    fun isClimbableAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isClimbableAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
-            state.isIn(net.minecraft.registry.tag.BlockTags.CLIMBABLE) ||
+            state.isIn(net.minecraft.tags.BlockTags.CLIMBABLE) ||
                 state.isOf(Blocks.VINE) || state.isOf(Blocks.LADDER) ||
                 state.isOf(Blocks.SCAFFOLDING)
         } catch (_: Throwable) {
@@ -147,7 +147,7 @@ object WorldQueries {
      * cobweb, soul sand/soil, and honey. A victim on/in these can move <0.1/tick after a
      * sprint-hit without using a Velocity cheat, so NoKnockback exempts them. Chunk-gated.
      */
-    fun isKbDampeningAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isKbDampeningAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             if (isLiquidAt(world, x, y, z)) return true
             val state = blockStateAt(world, x, y, z) ?: return false
@@ -161,7 +161,7 @@ object WorldQueries {
     /** True iff a lily pad sits at/just above (x,y,z) — a player can stand on a lily pad
      *  over water (it has no collision, so isSolidAt returns false) and must not be flagged
      *  as WaterWalk. Chunk-gated. */
-    fun isLilyPadAt(world: ClientWorld?, x: Int, y: Int, z: Int): Boolean {
+    fun isLilyPadAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             state.isOf(Blocks.LILY_PAD)
@@ -173,12 +173,12 @@ object WorldQueries {
     /** True iff a boat entity sits within ~1 block below (x,y,z) — a player standing ON a
      *  boat (not riding it) has water at the feet but is supported by the boat, not the
      *  WaterWalk cheat. `tp.inVehicle` only catches riding, not standing-on. */
-    fun isBoatBelow(world: ClientWorld?, x: Double, y: Double, z: Double): Boolean {
+    fun isBoatBelow(world: ClientLevel?, x: Double, y: Double, z: Double): Boolean {
         if (world == null) return false
         return try {
-            val player = MinecraftClient.getInstance().player ?: return false
-            val box = Box(x - 1.0, y - 1.5, z - 1.0, x + 1.0, y + 0.3, z + 1.0)
-            world.getOtherEntities(player, box) { it is BoatEntity }.isNotEmpty()
+            val player = Minecraft.getInstance().player ?: return false
+            val box = AABB(x - 1.0, y - 1.5, z - 1.0, x + 1.0, y + 0.3, z + 1.0)
+            world.getOtherEntities(player, box) { it is Boat }.isNotEmpty()
         } catch (_: Throwable) {
             false
         }
@@ -187,7 +187,7 @@ object WorldQueries {
     /** True iff a solid block stands within [reach] blocks ahead of (x,z) along the (dx,dz)
      *  unit direction, sweeping several vertical bands — a wall anywhere along the push
      *  legitimately stops the victim. Used by NoKnockback to exempt a blocked KB. */
-    fun isWallAhead(world: ClientWorld?, x: Double, y: Double, z: Double, dx: Double, dz: Double, reach: Double): Boolean {
+    fun isWallAhead(world: ClientLevel?, x: Double, y: Double, z: Double, dx: Double, dz: Double, reach: Double): Boolean {
         if (world == null) return false
         return try {
             val len = hypotOf(dx, dz)
@@ -245,17 +245,17 @@ object WorldQueries {
      * selects entity-dependent collision shapes and never affects the ray itself. If even that
      * is unavailable the read fails open (clear), preserving the documented posture.
      */
-    fun hasLineOfSight(world: ClientWorld?, from: Vec3d, to: Vec3d): Boolean {
+    fun hasLineOfSight(world: ClientLevel?, from: Vec3, to: Vec3): Boolean {
         if (world == null) return true
         return try {
             if (!isChunkLoaded(world, Math.floor(from.x).toInt(), Math.floor(from.z).toInt()) ||
                 !isChunkLoaded(world, Math.floor(to.x).toInt(), Math.floor(to.z).toInt())
             ) return true
-            val shapeEntity: Entity? = try { MinecraftClient.getInstance().player } catch (_: Throwable) { null }
-            val ctx = RaycastContext(
+            val shapeEntity: Entity? = try { Minecraft.getInstance().player } catch (_: Throwable) { null }
+            val ctx = ClipContext(
                 from, to,
-                RaycastContext.ShapeType.COLLIDER,
-                RaycastContext.FluidHandling.NONE,
+                ClipContext.ShapeType.COLLIDER,
+                ClipContext.FluidHandling.NONE,
                 shapeEntity,
             )
             val hit = world.raycast(ctx)

@@ -3,11 +3,11 @@ package dev.iustitia.ui
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.gui.DrawContext
-import net.minecraft.client.gui.Click
-import net.minecraft.client.gui.screen.Screen
-import net.minecraft.client.gui.widget.TextFieldWidget
-import net.minecraft.text.Text
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.input.MouseButtonEvent
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.client.gui.components.EditBox
+import net.minecraft.network.chat.Component
 import java.util.UUID
 
 /**
@@ -20,7 +20,7 @@ import java.util.UUID
  * Each row shows the cheat-tier glyph + name + alert count + most-flagged check. Clicking a row
  * opens [PlayerHistoryScreen] for that player. Typing filters by case-insensitive `contains`.
  *
- * Manual rendering (not [net.minecraft.client.gui.widget.ElementListWidget]) keeps the whole
+ * Manual rendering (not [net.minecraft.client.gui.components.ContainerObjectSelectionList]) keeps the whole
  * interaction under our control via the confirmed 1.21.11 `Click`-based input APIs and avoids
  * the `EntryListWidget$Entry`/`Click` dispatch uncertainty. Whole body fail-open.
  */
@@ -28,7 +28,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
 
     private data class Row(val uuid: UUID, val name: String, val tier: FlagHistory.Tier, val alerts: Int, val top: String?)
 
-    private var searchField: TextFieldWidget? = null
+    private var searchField: EditBox? = null
     private var filter: String = ""
     private var rows: List<Row> = emptyList()
     private var scroll: Int = 0
@@ -38,7 +38,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
     override fun init() {
         try {
             val w = this.width
-            searchField = TextFieldWidget(this.textRenderer, 10, 36, w - 20, 16, L10n.t("iustitia.screen.playerSearch.fieldLabel"))
+            searchField = EditBox(this.textRenderer, 10, 36, w - 20, 16, L10n.t("iustitia.screen.playerSearch.fieldLabel"))
                 .also { it.setMaxLength(32); it.text = filter; it.setChangedListener { f -> filter = f; rebuild(); scroll = 0 } }
             addDrawableChild(searchField)
             setInitialFocus(searchField)
@@ -66,7 +66,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) { rows = emptyList() }
     }
 
-    override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
         try {
             // F1-equivalent backdrop: fill the whole screen with a dark, mostly-opaque rectangle
             // BEFORE drawing content, so the in-game HUD (hotbar/chat/crosshair) and the world
@@ -94,9 +94,9 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
                 val hovered = mouseX in listLeft..(listLeft + rowWidth()) && mouseY in y..(y + ROW_H)
                 if (hovered) context.fill(listLeft, y, listLeft + rowWidth(), y + ROW_H, 0x40FFFFFF)
                 val glyph = glyphFor(r.tier)
-                context.drawTextWithShadow(tr, Text.literal(glyph + " §f" + r.name), listLeft + 2, y + 2, WHITE)
+                context.drawTextWithShadow(tr, Component.literal(glyph + " §f" + r.name), listLeft + 2, y + 2, WHITE)
                 val right = listLeft + rowWidth() - 4
-                val alertsTxt = Text.literal(L10n.s("iustitia.screen.playerSearch.alerts", r.alerts) + (r.top?.let { L10n.s("iustitia.screen.playerHistory.topCheck", it) } ?: ""))
+                val alertsTxt = Component.literal(L10n.s("iustitia.screen.playerSearch.alerts", r.alerts) + (r.top?.let { L10n.s("iustitia.screen.playerHistory.topCheck", it) } ?: ""))
                 context.drawTextWithShadow(tr, alertsTxt, right - tr.getWidth(alertsTxt), y + 2, WHITE)
             }
             // scrollbar
@@ -109,7 +109,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) {}
     }
 
-    override fun mouseClicked(click: Click, button: Boolean): Boolean {
+    override fun mouseClicked(click: MouseButtonEvent, button: Boolean): Boolean {
         try {
             if (super.mouseClicked(click, button)) return true
             if (button) return false
@@ -148,7 +148,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
     private fun rowWidth(): Int = this.width - 20
     private fun visibleRows(): Int = ((listBottom - listTop) / ROW_H).coerceAtLeast(1)
     private fun maxScroll(): Int = (rows.size - visibleRows()).coerceAtLeast(0)
-    private fun drawScrollbar(context: DrawContext, visible: Int, maxScroll: Int) {
+    private fun drawScrollbar(context: GuiGraphics, visible: Int, maxScroll: Int) {
         val trackH = listBottom - listTop
         val knobH = (trackH * visible / (rows.size)).coerceAtLeast(10)
         val knobY = listTop + (trackH - knobH) * scroll / maxScroll

@@ -15,7 +15,7 @@ import dev.iustitia.protocol.ProtocolDetector
 import dev.iustitia.tracking.EntityTrackerManager
 import dev.iustitia.tracking.LagCombatCorrelator
 import dev.iustitia.tracking.TrackedPlayer
-import net.minecraft.util.math.Vec3d
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import kotlin.math.acos
 import kotlin.math.sqrt
@@ -105,7 +105,7 @@ class ReachCheck : Check() {
             val vh = HitboxSizes.forPose(victim)
 
             // candidate victim positions: current + recent ring samples (lag comp)
-            val positions = ArrayList<Vec3d>(8)
+            val positions = ArrayList<Vec3>(8)
             positions.add(victim.pos)
             for (p in victim.ring.getPositions(3, ev.tick)) positions.add(p)
 
@@ -179,7 +179,7 @@ class ReachCheck : Check() {
                 // never-FP preserved: an unloaded victim chunk yields a near origin/pos, always
                 // within reach and never flags.)
                 var bestCenter = Double.MAX_VALUE
-                var bestVp: Vec3d = victim.pos
+                var bestVp: Vec3 = victim.pos
                 for (vp in positions) {
                     val d = eye.distanceTo(vp)
                     if (d < bestCenter) { bestCenter = d; bestVp = vp }
@@ -294,7 +294,7 @@ class ReachCheck : Check() {
      * distance flags trigger it; `hitboxMiss` (within-reach silent-aim) is a different cheat.
      */
     private fun lagRangeAmplify(
-        attacker: TrackedPlayer, victim: TrackedPlayer, ctx: CheckContext, eye: Vec3d, ev: AttackEvent,
+        attacker: TrackedPlayer, victim: TrackedPlayer, ctx: CheckContext, eye: Vec3, ev: AttackEvent,
     ) {
         try {
             val lag = LagCombatCorrelator.combatCorrelatedLag(attacker.uuid, ev.tick, LAG_CORR_WINDOW)

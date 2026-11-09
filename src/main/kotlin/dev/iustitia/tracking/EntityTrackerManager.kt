@@ -1,11 +1,11 @@
 package dev.iustitia.tracking
 
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.world.ClientWorld
-import net.minecraft.item.consume.UseAction
-import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.Vec3d
+import net.minecraft.client.Minecraft
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.world.item.ItemUseAnimation
+import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.protocol.ProtocolDetector
@@ -90,7 +90,7 @@ object EntityTrackerManager {
     fun onDespawn(listener: (UUID) -> Unit) { despawnListeners.add(listener) }
 
     /** Mark a velocity packet received — opens the velocity-exemption window for [ticksAhead]. */
-    fun markVelocity(uuid: UUID, tick: Int, velocity: Vec3d) {
+    fun markVelocity(uuid: UUID, tick: Int, velocity: Vec3) {
         try {
             val tp = byUuid[uuid] ?: return
             tp.velocityTick = tick
@@ -137,7 +137,7 @@ object EntityTrackerManager {
             }
             tp.digActive = true
             tp.digTick = tick
-            tp.digPos = Vec3d(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
+            tp.digPos = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
         } catch (_: Throwable) {
             // ignore
         }
@@ -196,7 +196,7 @@ object EntityTrackerManager {
      * Poll all other players for the current tick. Returns the live tracked set
      * (snapshot list). Callers (the check driver) iterate and run checks against it.
      */
-    fun poll(world: ClientWorld?, tick: Int): List<TrackedPlayer> {
+    fun poll(world: ClientLevel?, tick: Int): List<TrackedPlayer> {
         currentTick = tick
         // No world means no players exist client-side, so EVERY tracked entry is stale. Purge
         // before returning rather than after: this early return used to sit above the despawn
@@ -208,12 +208,12 @@ object EntityTrackerManager {
             sweepDespawns(emptySet())
             return emptyList()
         }
-        val client = MinecraftClient.getInstance()
+        val client = Minecraft.getInstance()
         return try {
             val seen = HashSet<UUID>()
             for (e in world.players) {
                 if (e === client.player) continue
-                if (e !is OtherClientPlayerEntity) continue
+                if (e !is RemotePlayer) continue
                 try {
                     val tp = byUuid.getOrPut(e.uuid) { TrackedPlayer(e.uuid, e.id, tick) }
                     tp.entity = e
@@ -251,11 +251,11 @@ object EntityTrackerManager {
         }
     }
 
-    private fun updateSnapshot(tp: TrackedPlayer, world: ClientWorld, tick: Int) {
+    private fun updateSnapshot(tp: TrackedPlayer, world: ClientLevel, tick: Int) {
         val e = tp.entity ?: return
         // capture server-space state from the live entity (Entity has no public getPos();
         // use getX/Y/Z which are public final).
-        val newPos = Vec3d(e.getX(), e.getY(), e.getZ())
+        val newPos = Vec3(e.getX(), e.getY(), e.getZ())
         val newYaw = e.yaw
         val newPitch = e.pitch
 
@@ -330,8 +330,8 @@ object EntityTrackerManager {
             else {
                 val main = e.mainHandStack.useAction
                 val off = e.offHandStack.useAction
-                main == UseAction.EAT || main == UseAction.DRINK ||
-                    off == UseAction.EAT || off == UseAction.DRINK
+                main == ItemUseAnimation.EAT || main == ItemUseAnimation.DRINK ||
+                    off == ItemUseAnimation.EAT || off == ItemUseAnimation.DRINK
             }
         } catch (_: Throwable) {
             false
@@ -343,7 +343,7 @@ object EntityTrackerManager {
             else {
                 val main = e.mainHandStack.useAction
                 val off = e.offHandStack.useAction
-                main == UseAction.BLOCK || off == UseAction.BLOCK
+                main == ItemUseAnimation.BLOCK || off == ItemUseAnimation.BLOCK
             }
         } catch (_: Throwable) {
             false

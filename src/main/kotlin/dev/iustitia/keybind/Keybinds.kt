@@ -2,9 +2,9 @@ package dev.iustitia.keybind
 
 import dev.iustitia.i18n.L10n
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
-import net.minecraft.client.option.KeyBinding
-import net.minecraft.client.util.InputUtil
-import net.minecraft.util.Identifier
+import net.minecraft.client.KeyMapping
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.resources.Identifier
 import org.lwjgl.glfw.GLFW
 
 /**
@@ -31,20 +31,20 @@ import org.lwjgl.glfw.GLFW
 object Keybinds {
 
     // Create once during client registration, not object initialization: duplicate IDs are rejected.
-    private val category: KeyBinding.Category by lazy {
-        KeyBinding.Category.create(Identifier.of("iustitia", "keybinds"))
+    private val category: KeyMapping.Category by lazy {
+        KeyMapping.Category.create(Identifier.of("iustitia", "keybinds"))
     }
 
     /** A registered bind: metadata always present; [keyBinding] is null until [register] succeeds.
      *  [label] and [description] are live lookups (not frozen constructor strings) so a runtime
      *  language switch applies to the hub immediately. The texts live in the language files
      *  (`key.iustitia.<id>` / `iustitia.misc.keybind.<id>`); the static verifier fails if en_us is
-     *  missing either key, and [net.minecraft.util.Language] falls back to en_us for any translation
+     *  missing either key, and [net.minecraft.locale.Language] falls back to en_us for any translation
      *  that lacks them. */
     data class Bind(
         val id: String,
         val defaultKey: Int,
-        var keyBinding: KeyBinding?,
+        var keyBinding: KeyMapping?,
     ) {
         /** Display label — the vanilla `key.iustitia.<id>` key (same text the Controls screen shows). */
         val label: String
@@ -83,7 +83,7 @@ object Keybinds {
         val category = this.category
         for (b in binds) {
             try {
-                val kb = KeyBinding("key.iustitia.${b.id}", InputUtil.Type.KEYSYM, b.defaultKey, category)
+                val kb = KeyMapping("key.iustitia.${b.id}", InputConstants.Type.KEYSYM, b.defaultKey, category)
                 KeyBindingHelper.registerKeyBinding(kb)
                 b.keyBinding = kb
             } catch (_: Throwable) {

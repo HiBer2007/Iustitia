@@ -7,10 +7,10 @@ import dev.iustitia.Iustitia
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.persistence.PersistenceManager
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.gl.Framebuffer
-import net.minecraft.client.util.ScreenshotRecorder
-import net.minecraft.text.Text
+import net.minecraft.client.Minecraft
+import com.mojang.blaze3d.pipeline.RenderTarget
+import net.minecraft.client.Screenshot
+import net.minecraft.network.chat.Component
 import java.util.UUID
 import java.util.function.Consumer
 
@@ -86,7 +86,7 @@ object Snapshot {
     fun capture(uuid: UUID, name: String): String {
         val summary = buildSummary(uuid, name)
         try {
-            val client = MinecraftClient.getInstance()
+            val client = Minecraft.getInstance()
             // Honest save result: the json file is the only part that can silently fail —
             // report it instead of letting "posted + copied to clipboard" imply everything landed.
             var fileFailed = false
@@ -95,9 +95,9 @@ object Snapshot {
             }
             client.execute {
                 try {
-                    client.inGameHud?.chatHud?.addMessage(Text.literal(summary))
+                    client.inGameHud?.chatHud?.addMessage(Component.literal(summary))
                     try { client.keyboard.setClipboard(summary) } catch (_: Throwable) {}
-                    if (fileFailed) client.inGameHud?.chatHud?.addMessage(Text.literal(
+                    if (fileFailed) client.inGameHud?.chatHud?.addMessage(Component.literal(
                         L10n.s("iustitia.session.snapshotFileFailed")))
                 } catch (_: Throwable) {}
             }
@@ -127,7 +127,7 @@ object Snapshot {
      */
     fun captureScreenshot(name: String, offenderUuid: UUID? = null) {
         try {
-            val client = MinecraftClient.getInstance()
+            val client = Minecraft.getInstance()
             val dir = PersistenceManager.screenshotsDirFile() ?: return
             val tick = Iustitia.tickCounter
             val safe = name.replace(Regex("[^A-Za-z0-9_.-]"), "_")
@@ -142,11 +142,11 @@ object Snapshot {
                 return
             }
             // No target → immediate local-POV capture (vanilla F2 angle) on the render thread.
-            val fb: Framebuffer? = client.framebuffer
+            val fb: RenderTarget? = client.framebuffer
             if (fb == null) return
             client.execute {
                 try {
-                    ScreenshotRecorder.saveScreenshot(
+                    Screenshot.saveScreenshot(
                         dir, filename, fb, 1,
                         Consumer { msg -> try { client.inGameHud?.chatHud?.addMessage(msg) } catch (_: Throwable) {} }
                     )

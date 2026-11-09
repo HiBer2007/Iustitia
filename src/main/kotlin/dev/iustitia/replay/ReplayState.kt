@@ -2,8 +2,8 @@ package dev.iustitia.replay
 
 import java.util.UUID
 import dev.iustitia.i18n.L10n
-import net.minecraft.util.math.MathHelper
-import net.minecraft.util.math.Vec3d
+import net.minecraft.util.Mth
+import net.minecraft.world.phys.Vec3
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -112,7 +112,7 @@ object ReplayState {
      * `null` ⇒ legacy absolute rendering (start couldn't compute it, or [IustitiaConfig.replayRelocate]
      * is off). Read cross-thread by [dev.iustitia.render.ReplayRenderer] + [dev.iustitia.mixin.CameraMixin].
      */
-    @Volatile var relocOffset: Vec3d? = null
+    @Volatile var relocOffset: Vec3? = null
         private set
 
     /**
@@ -167,7 +167,7 @@ object ReplayState {
 
     /** The user's position at [start] — the point a segment's [relocOffset] maps the focus start onto.
      *  Client-thread only. */
-    private var userPos: Vec3d? = null
+    private var userPos: Vec3? = null
 
     /** Block-delta overlay cursor: the playhead tick the overlay is currently built to, the next delta
      *  index to apply, and the chunk keys the deltas touched (to invalidate their bakes). Client-thread
@@ -272,7 +272,7 @@ object ReplayState {
 
     /** Saved local-player perspective while POV forces first-person (mirrors [dev.iustitia.render.WatchState]).
      *  Null = nothing saved (not in POV). Client-thread-only writes. */
-    private var savedPerspective: net.minecraft.client.option.Perspective? = null
+    private var savedPerspective: net.minecraft.client.CameraType? = null
 
     /**
      * Begin a replay/clip-playback of [window].frames at [speed]. [focus] is the highlighted player
@@ -312,8 +312,8 @@ object ReplayState {
             totems = if (legacy) emptyList() else window.totems
             this.relocate = relocate
             userPos = try {
-                val p = net.minecraft.client.MinecraftClient.getInstance().player
-                if (p != null) Vec3d(p.x, p.y, p.z) else null
+                val p = net.minecraft.client.Minecraft.getInstance().player
+                if (p != null) Vec3(p.x, p.y, p.z) else null
             } catch (_: Throwable) { null }
             frameSegIndex = buildFrameSegIndex(window)
             activeSegmentIndex = -1
@@ -352,7 +352,7 @@ object ReplayState {
      * the live body stays visible, which is the pre-existing behavior.
      */
     private fun windowHasSelf(window: ReplayBuffer.Window): Boolean = try {
-        val u = net.minecraft.client.MinecraftClient.getInstance().player?.uuid ?: return false
+        val u = net.minecraft.client.Minecraft.getInstance().player?.uuid ?: return false
         window.frames.any { f -> f.snaps.any { it.uuid() == u } }
     } catch (_: Throwable) { false }
 
@@ -397,20 +397,20 @@ object ReplayState {
      * player); called from [start] only when [relocate] is true (i.e. `/ius playclip`). `/ius replay`
      * never calls this (it passes [relocate]=false) so replay stays at exact recorded coords.
      */
-    private fun computeRelocOffset(window: ReplayBuffer.Window, focus: UUID?): Vec3d? = try {
+    private fun computeRelocOffset(window: ReplayBuffer.Window, focus: UUID?): Vec3? = try {
         if (!try { dev.iustitia.config.ConfigManager.config.replayRelocate } catch (_: Throwable) { true }) return null
         val origin = focusStartPos(window, focus) ?: return null
-        val player = net.minecraft.client.MinecraftClient.getInstance().player ?: return null
-        Vec3d(player.x - origin.x, player.y - origin.y, player.z - origin.z)
+        val player = net.minecraft.client.Minecraft.getInstance().player ?: return null
+        Vec3(player.x - origin.x, player.y - origin.y, player.z - origin.z)
     } catch (_: Throwable) { null }
 
     /** The focus player's recorded position in the first frame; the first snap's centroid if no focus
      *  (or no snaps). Null only when there are no frames at all. */
-    private fun focusStartPos(window: ReplayBuffer.Window, focus: UUID?): Vec3d? = try {
+    private fun focusStartPos(window: ReplayBuffer.Window, focus: UUID?): Vec3? = try {
         val first = window.frames.first().snaps
         if (first.isEmpty()) return null
         val s = (focus?.let { u -> first.firstOrNull { it.uuid() == u } } ?: first.first())
-        Vec3d(s.x.toDouble(), s.y.toDouble(), s.z.toDouble())
+        Vec3(s.x.toDouble(), s.y.toDouble(), s.z.toDouble())
     } catch (_: Throwable) { null }
 
     // ---- capture segments + block-delta overlay (SnapClip port) --------------------------------------
@@ -439,23 +439,23 @@ object ReplayState {
 
     /** The focus player's position in [seg]'s first frame (or the first snap's when no focus). Null when
      *  the frame/snap list is missing. Fail-open. */
-    private fun segmentFirstFocusPos(seg: ReplayBuffer.Segment, focus: UUID?): Vec3d? = try {
+    private fun segmentFirstFocusPos(seg: ReplayBuffer.Segment, focus: UUID?): Vec3? = try {
         val idx = seg.firstFrameIndex
         if (idx < 0 || idx >= frames.size) return null
         val snaps = frames[idx].snaps
         if (snaps.isEmpty()) return null
         val s = (focus?.let { u -> snaps.firstOrNull { it.uuid() == u } } ?: snaps.first())
-        Vec3d(s.x.toDouble(), s.y.toDouble(), s.z.toDouble())
+        Vec3(s.x.toDouble(), s.y.toDouble(), s.z.toDouble())
     } catch (_: Throwable) { null }
 
     /** Per-segment relocation offset (`userPos - segmentFocusStart`), gated by the same
      *  [dev.iustitia.config.IustitiaConfig.replayRelocate] toggle as [computeRelocOffset]. Null when
      *  relocation is off / the segment or user pos is unavailable. */
-    private fun computeSegmentOffset(seg: ReplayBuffer.Segment, focus: UUID?): Vec3d? = try {
+    private fun computeSegmentOffset(seg: ReplayBuffer.Segment, focus: UUID?): Vec3? = try {
         if (!try { dev.iustitia.config.ConfigManager.config.replayRelocate } catch (_: Throwable) { true }) return null
         val origin = segmentFirstFocusPos(seg, focus) ?: return null
         val up = userPos ?: return null
-        Vec3d(up.x - origin.x, up.y - origin.y, up.z - origin.z)
+        Vec3(up.x - origin.x, up.y - origin.y, up.z - origin.z)
     } catch (_: Throwable) { null }
 
     /**
@@ -684,7 +684,7 @@ object ReplayState {
     fun currentFrameLerped(tickDelta: Float): ReplayBuffer.Frame? = try {
         if (!active || frames.isEmpty()) return null
         val td = tickDelta.coerceIn(0f, 1f)
-        val rh = MathHelper.lerp(td, prevPlayhead, playhead)
+        val rh = Mth.lerp(td, prevPlayhead, playhead)
         val idx = rh.toInt().coerceIn(0, frames.size - 1)
         val frac = (rh - idx).coerceIn(0f, 1f)
         val a = frames[idx]
@@ -744,14 +744,14 @@ object ReplayState {
         val f = frac.coerceIn(0f, 1f)
         return ReplayBuffer.PlayerSnap(
             uuidMost = a.uuidMost, uuidLeast = a.uuidLeast,
-            x = MathHelper.lerp(f, a.x, b.x),
-            y = MathHelper.lerp(f, a.y, b.y),
-            z = MathHelper.lerp(f, a.z, b.z),
-            yaw = MathHelper.lerpAngleDegrees(f, a.yaw, b.yaw),
-            pitch = MathHelper.lerp(f, a.pitch, b.pitch),
+            x = Mth.lerp(f, a.x, b.x),
+            y = Mth.lerp(f, a.y, b.y),
+            z = Mth.lerp(f, a.z, b.z),
+            yaw = Mth.lerpAngleDegrees(f, a.yaw, b.yaw),
+            pitch = Mth.lerp(f, a.pitch, b.pitch),
             // v13 body/head yaw lerp; older snaps default both to the look yaw so it's a no-op there.
-            bodyYaw = MathHelper.lerpAngleDegrees(f, a.bodyYaw, b.bodyYaw),
-            headYaw = MathHelper.lerpAngleDegrees(f, a.headYaw, b.headYaw),
+            bodyYaw = Mth.lerpAngleDegrees(f, a.bodyYaw, b.bodyYaw),
+            headYaw = Mth.lerpAngleDegrees(f, a.headYaw, b.headYaw),
             swingTicks = b.swingTicks, pose = b.pose, name = b.name,
             hurtTime = b.hurtTime, health = b.health, maxHealth = b.maxHealth,
             mainHand = b.mainHand, offHand = b.offHand, head = b.head, chest = b.chest, legs = b.legs, feet = b.feet,
@@ -765,12 +765,12 @@ object ReplayState {
         return ReplayBuffer.EntitySnap(
             typeId = b.typeId,
             uuidMost = a.uuidMost, uuidLeast = a.uuidLeast,
-            x = MathHelper.lerp(f, a.x, b.x),
-            y = MathHelper.lerp(f, a.y, b.y),
-            z = MathHelper.lerp(f, a.z, b.z),
-            bodyYaw = MathHelper.lerpAngleDegrees(f, a.bodyYaw, b.bodyYaw),
-            headYaw = MathHelper.lerpAngleDegrees(f, a.headYaw, b.headYaw),
-            pitch = MathHelper.lerp(f, a.pitch, b.pitch),
+            x = Mth.lerp(f, a.x, b.x),
+            y = Mth.lerp(f, a.y, b.y),
+            z = Mth.lerp(f, a.z, b.z),
+            bodyYaw = Mth.lerpAngleDegrees(f, a.bodyYaw, b.bodyYaw),
+            headYaw = Mth.lerpAngleDegrees(f, a.headYaw, b.headYaw),
+            pitch = Mth.lerp(f, a.pitch, b.pitch),
             pose = b.pose, hurtTime = b.hurtTime, health = b.health, maxHealth = b.maxHealth,
         )
     }
@@ -879,10 +879,10 @@ object ReplayState {
             val prev = cameraMode
             cameraMode = mode
             if (prev == mode) return
-            val mc = net.minecraft.client.MinecraftClient.getInstance()
+            val mc = net.minecraft.client.Minecraft.getInstance()
             if (mode == CameraMode.POV && prev != CameraMode.POV) {
                 if (savedPerspective == null) savedPerspective = mc.options.perspective
-                mc.options.setPerspective(net.minecraft.client.option.Perspective.FIRST_PERSON)
+                mc.options.setPerspective(net.minecraft.client.CameraType.FIRST_PERSON)
             } else if (mode != CameraMode.POV && prev == CameraMode.POV) {
                 restorePerspective()
             }
@@ -903,7 +903,7 @@ object ReplayState {
      *  in [setCameraMode] (only called on a FREECAM transition). Client thread only. Fail-open. */
     private fun enterFreecam() {
         try {
-            val mc = net.minecraft.client.MinecraftClient.getInstance()
+            val mc = net.minecraft.client.Minecraft.getInstance()
             val p = mc.player ?: return
             val eye = p.getEyePos()
             // MC yaw convention: yaw 0 → +Z (south); horizontal forward = (-sin yaw, cos yaw).
@@ -942,7 +942,7 @@ object ReplayState {
      * right, jump=+Y, sneak=−Y), noclip (no collision/gravity — spectator feel). DEFAULT (no key) is
      *  the fast spectator speed ([FC_FLY_FAST]); holding CTRL (sprint) BOOSTS to [FC_FLY_BOOST] ≈ 2×
      *  the native speed. Reads the
-     * held vanilla [net.minecraft.client.option.KeyBinding]s (public API, no mixin) — the player's own
+     * held vanilla [net.minecraft.client.KeyMapping]s (public API, no mixin) — the player's own
      * walking is already suppressed by [dev.iustitia.mixin.ClientPlayerEntityMixin], so the keys are
      * free for the camera. No-op when FREECAM isn't active. Client thread only. Fail-open: a tick
      * error drops this tick's camera movement, never crashes.
@@ -961,7 +961,7 @@ object ReplayState {
                 fcPitch = (fcPitch + (pendingPitchDelta * 0.15).toFloat()).coerceIn(-90f, 90f)
                 pendingYawDelta = 0.0; pendingPitchDelta = 0.0
             }
-            val mc = net.minecraft.client.MinecraftClient.getInstance()
+            val mc = net.minecraft.client.Minecraft.getInstance()
             val opts = mc.options
             val fwd = opts.forwardKey.isPressed
             val back = opts.backKey.isPressed
@@ -1036,7 +1036,7 @@ object ReplayState {
     /** Restore the saved local-player perspective (called on stop / leaving POV). Idempotent. */
     private fun restorePerspective() {
         try {
-            val mc = net.minecraft.client.MinecraftClient.getInstance()
+            val mc = net.minecraft.client.Minecraft.getInstance()
             savedPerspective?.let { mc.options.setPerspective(it) }
             savedPerspective = null
         } catch (_: Throwable) {}

@@ -1,7 +1,7 @@
 package dev.iustitia.mixin
 
 import dev.iustitia.replay.ReplayState
-import net.minecraft.client.render.SectionRenderState
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -39,7 +39,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * `defaultRequire: 1` means a mismatch fails launch — the build can't confirm mixin-apply, only a live
  * client run can. If it ever fails at runtime, the gate is the single point to flip.
  */
-@Mixin(SectionRenderState::class)
+@Mixin(ChunkSectionsToRender::class)
 class SectionRenderStateMixin {
 
     @Inject(method = ["renderSection"], at = [At("HEAD")], cancellable = true)

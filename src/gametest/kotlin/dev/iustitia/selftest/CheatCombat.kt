@@ -1,7 +1,7 @@
 package dev.iustitia.selftest
 
-import net.minecraft.item.ItemStack
-import net.minecraft.item.Items
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 
 /**
  * The **combat half of the unfair-advantage pass**. Every scenario names the reference client
@@ -419,7 +419,7 @@ object CheatCombat {
         val g = b.groundY.toInt()
         // A full-height wall between them: 5 wide, 3 tall (so it clearly covers the attacker's eye
         // and the victim's whole body), spanning the two cells at z = 1 and 2.
-        b.fill(-2, g, 1, 2, g + 2, 2, net.minecraft.block.Blocks.STONE)
+        b.fill(-2, g, 1, 2, g + 2, 2, net.minecraft.world.level.block.Blocks.STONE)
         b.strike(bot, victim, every = 4, aimYaw = 0f)
         b.runFor(120)
     }

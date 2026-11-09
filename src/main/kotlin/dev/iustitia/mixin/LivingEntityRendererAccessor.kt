@@ -1,8 +1,8 @@
 package dev.iustitia.mixin
 
-import net.minecraft.client.item.ItemModelManager
-import net.minecraft.client.render.entity.LivingEntityRenderer
-import net.minecraft.client.render.entity.feature.FeatureRenderer
+import net.minecraft.client.renderer.item.ItemModelResolver
+import net.minecraft.client.renderer.entity.LivingEntityRenderer
+import net.minecraft.client.renderer.entity.layers.RenderLayer
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.gen.Accessor
 
@@ -25,8 +25,8 @@ import org.spongepowered.asm.mixin.gen.Accessor
 @Mixin(LivingEntityRenderer::class)
 interface LivingEntityRendererAccessor {
     @Accessor("features")
-    fun iustitia_getFeatures(): List<FeatureRenderer<*, *>>
+    fun iustitia_getFeatures(): List<RenderLayer<*, *>>
 
     @Accessor("itemModelResolver")
-    fun iustitia_getItemModelManager(): ItemModelManager
+    fun iustitia_getItemModelManager(): ItemModelResolver
 }

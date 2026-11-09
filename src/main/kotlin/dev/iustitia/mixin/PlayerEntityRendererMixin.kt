@@ -4,14 +4,14 @@ import dev.iustitia.VerboseLog
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.network.OtherClientPlayerEntity
-import net.minecraft.client.render.command.OrderedRenderCommandQueue
-import net.minecraft.client.render.entity.PlayerEntityRenderer
-import net.minecraft.client.render.entity.state.PlayerEntityRenderState
-import net.minecraft.client.render.state.CameraRenderState
-import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.entity.PlayerLikeEntity
-import net.minecraft.text.Text
+import net.minecraft.client.player.RemotePlayer
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.entity.player.AvatarRenderer
+import net.minecraft.client.renderer.entity.state.AvatarRenderState
+import net.minecraft.client.renderer.state.CameraRenderState
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.world.entity.Avatar
+import net.minecraft.network.chat.Component
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.injection.At
 import org.spongepowered.asm.mixin.injection.Inject
@@ -102,7 +102,7 @@ import java.util.IdentityHashMap
  * overloads). `displayName` = `field_53337`, declared on `EntityRenderState` (accessor targets that
  * class — see [EntityRenderStateAccessor] and the GOTCHA recorded in the nametag memory note).
  */
-@Mixin(PlayerEntityRenderer::class)
+@Mixin(AvatarRenderer::class)
 class PlayerEntityRendererMixin {
 
     /**
@@ -112,7 +112,7 @@ class PlayerEntityRendererMixin {
      */
     private data class TierEntry(val tier: FlagHistory.Tier, val uuid: java.util.UUID)
 
-    private val stateTier: IdentityHashMap<PlayerEntityRenderState, TierEntry> = IdentityHashMap()
+    private val stateTier: IdentityHashMap<AvatarRenderState, TierEntry> = IdentityHashMap()
 
     /**
      * Players for which we've already emitted the "fell back to BELOW_NAME score line" verbose
@@ -129,8 +129,8 @@ class PlayerEntityRendererMixin {
 
     @Inject(method = ["updateRenderState"], at = [At("TAIL")])
     private fun iustitia_recordTier(
-        entity: PlayerLikeEntity,
-        state: PlayerEntityRenderState,
+        entity: Avatar,
+        state: AvatarRenderState,
         tickProgress: Float,
         ci: CallbackInfo,
     ) {
@@ -141,7 +141,7 @@ class PlayerEntityRendererMixin {
 
             // `null` means "not one of the other players", which covers the local player (the client
             // player is not an OtherClientPlayerEntity; see the class doc), so self never gets a prefix.
-            val other = entity as? OtherClientPlayerEntity
+            val other = entity as? RemotePlayer
             if (other == null) {
                 stateTier.remove(state)
             } else {
@@ -154,9 +154,9 @@ class PlayerEntityRendererMixin {
 
     @Inject(method = ["renderLabelIfPresent"], at = [At("HEAD")])
     private fun iustitia_prefixNametagAtDraw(
-        state: PlayerEntityRenderState,
-        matrices: MatrixStack,
-        queue: OrderedRenderCommandQueue,
+        state: AvatarRenderState,
+        matrices: PoseStack,
+        queue: SubmitNodeCollector,
         camera: CameraRenderState,
         ci: CallbackInfo,
     ) {
@@ -189,7 +189,7 @@ class PlayerEntityRendererMixin {
             // white variant). The numeric confidence score is NOT shown on the nametag — only the
             // glyph. (The score is still available in `/ius hist`, `/ius session`, the snapshot, and
             // the crosshair confidence HUD.)
-            val prefix = Text.literal("§${glyphColor}[$glyph]§r ")
+            val prefix = Component.literal("§${glyphColor}[$glyph]§r ")
 
             val dnAcc = state as? EntityRenderStateAccessor ?: return
             val displayName = dnAcc.iustitia_getDisplayName()
@@ -198,7 +198,7 @@ class PlayerEntityRendererMixin {
                 // untouched. Double-prefix guard: skip if already prefixed this frame (multi-pass).
                 // Color-agnostic so the burst-pulse §f variant (and the §7 badge) still match.
                 if (alreadyPrefixed(displayName.string)) return
-                dnAcc.iustitia_setDisplayName(Text.empty().append(prefix).append(displayName))
+                dnAcc.iustitia_setDisplayName(Component.empty().append(prefix).append(displayName))
             } else {
                 // FALLBACK: the server hid the vanilla name (displayName null via team
                 // nametagVisibility). WHEN renderLabelIfPresent is being called, the only label the
@@ -219,7 +219,7 @@ class PlayerEntityRendererMixin {
                 if (tier == FlagHistory.Tier.GREEN) return
                 if (pnAcc == null || score == null) return   // no BELOW_NAME objective → nothing to prefix
                 if (alreadyPrefixed(score.string)) return
-                pnAcc.iustitia_setPlayerName(Text.empty().append(prefix).append(score))
+                pnAcc.iustitia_setPlayerName(Component.empty().append(prefix).append(score))
                 logFallbackOnce(entry.uuid, tier)
             }
         } catch (_: Throwable) {}

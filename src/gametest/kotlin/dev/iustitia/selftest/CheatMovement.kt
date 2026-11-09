@@ -1,8 +1,8 @@
 package dev.iustitia.selftest
 
-import net.minecraft.block.Blocks
-import net.minecraft.item.ItemStack
-import net.minecraft.item.Items
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 
 /**
  * The **movement half of the unfair-advantage pass**: flight, speed, teleport/blink, fall
