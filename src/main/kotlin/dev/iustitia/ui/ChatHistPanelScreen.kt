@@ -2,7 +2,7 @@ package dev.iustitia.ui
 
 import dev.iustitia.chathist.ChatHistory
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.Date
 /**
  * `/ius chathist panel ...` — a narrow side-panel overlay that reuses the same chrome + render
  * layout as [TranscriptPanelScreen] (right-edge panel, same `0xCC101010` background, same
- * `§8[§diustitia§8]` header, `drawTextWithShadow` rows, `shouldPause = false` so the game keeps
+ * `§8[§diustitia§8]` header, `graphics.text` rows, `isPauseScreen = false` so the game keeps
  * running) but draws captured chat rows instead of flag events. The panel is a bit wider than the
  * transcript panel (~220px vs ~150px) and wraps long rows to the panel width, so a long message or
  * a long username continues on the next line instead of clipping off the right edge. Refreshed
@@ -30,11 +30,23 @@ class ChatHistPanelScreen(
     private val parent: Screen?,
 ) : Screen(TITLE) {
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the panel
+     * keeps its old look over the live game; with no level loaded the vanilla panorama/blur/menu
+     * background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() { try {} catch (_: Throwable) {} }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
             val w = this.width
             // A bit wider than the transcript panel (which is ~150px) so usernames + wrapped
@@ -42,18 +54,18 @@ class ChatHistPanelScreen(
             // handles anything longer, so this is about comfort, not fitting one line.
             val panelW = minOf(220, w / 4)
             val x0 = w - panelW
-            context.fill(x0, 0, w, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
+            graphics.fill(x0, 0, w, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
             var y = 6
-            context.drawTextWithShadow(tr, Component.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
-            context.drawTextWithShadow(tr, Component.literal("§8chathist"), x0 + 4, y, WHITE); y += 11
-            context.drawTextWithShadow(tr, Component.literal("§f$subtitle"), x0 + 4, y, WHITE); y += 13
+            graphics.text(tr, Component.literal("§8[§diustitia§8]"), x0 + 4, y, WHITE); y += 11
+            graphics.text(tr, Component.literal("§8chathist"), x0 + 4, y, WHITE); y += 11
+            graphics.text(tr, Component.literal("§f$subtitle"), x0 + 4, y, WHITE); y += 13
             val rows = rowsProvider().take(limit)
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.chatHist.lastMsg", rows.size), x0 + 4, y, WHITE); y += 11
+            graphics.text(tr, L10n.t("iustitia.screen.chatHist.lastMsg", rows.size), x0 + 4, y, WHITE); y += 11
             val maxW = panelW - 8
             if (rows.isEmpty()) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.chatHist.empty"), x0 + 4, y, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.chatHist.empty"), x0 + 4, y, WHITE)
             } else {
                 for (r in rows) {
                     val ts = try { FMT.format(Date(r.wallClockMs)) } catch (_: Throwable) { "??:??:??" }
@@ -61,10 +73,10 @@ class ChatHistPanelScreen(
                     // Wrap to the panel width so a long message (or a long username) continues on
                     // the next line instead of clipping off the right edge. The timestamp + name
                     // stay on the first wrapped line; continuation lines sit flush-left under them.
-                    val wrapped = tr.wrapLines(Component.literal(full), maxW)
+                    val wrapped = tr.split(Component.literal(full), maxW)
                     for (ln in wrapped) {
                         if (y > this.height - 12) return
-                        context.drawTextWithShadow(tr, ln, x0 + 4, y, WHITE)
+                        graphics.text(tr, ln, x0 + 4, y, WHITE)
                         y += 11
                     }
                     y += 1 // small gap between messages for readability
@@ -72,13 +84,13 @@ class ChatHistPanelScreen(
             }
         } catch (_: Throwable) {
             try {
-                val tr = this.textRenderer
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.chatHist.unavailable"), 4, 4, WHITE)
+                val tr = this.font
+                graphics.text(tr, L10n.t("iustitia.screen.chatHist.unavailable"), 4, 4, WHITE)
             } catch (_: Throwable) {}
         }
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     companion object {
         private val TITLE get() = L10n.t("iustitia.screen.chatHist.title")

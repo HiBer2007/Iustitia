@@ -2,7 +2,7 @@ package dev.iustitia.ui
 
 import dev.iustitia.i18n.L10n
 import dev.iustitia.keybind.Keybinds
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.KeyMapping
@@ -22,7 +22,19 @@ class KeybindHubScreen(private val parent: Screen?) : Screen(TITLE) {
 
     private var rows: List<Row> = emptyList()
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the hub
+     * keeps its old look over the live game; with no level loaded the vanilla panorama/blur/menu
+     * background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() {
         try { rebuild() } catch (_: Throwable) {}
@@ -30,46 +42,47 @@ class KeybindHubScreen(private val parent: Screen?) : Screen(TITLE) {
 
     private fun rebuild() {
         try {
-            val client = this.client ?: run { rows = emptyList(); return }
+            val client = this.minecraft ?: run { rows = emptyList(); return }
             // Every registered keybinding in the game (vanilla + mods), for conflict detection.
-            // KeyBinding.boundKey is protected, so compare via the public bound-key translation key
-            // (unique per physical key) — two binds sharing a key share this string.
-            val allKeys: Array<KeyMapping> = try { client.options.allKeys } catch (_: Throwable) { emptyArray() }
+            // KeyMapping's bound key is protected, so compare via the public saved-key name
+            // (a `key.keyboard.*`/`key.mouse.*` identifier, unique per physical key) — two binds
+            // sharing a key share this string.
+            val allKeys: Array<KeyMapping> = try { client.options.keyMappings } catch (_: Throwable) { emptyArray() }
             rows = Keybinds.all.map { b ->
-                val myKey = try { b.keyBinding?.boundKeyTranslationKey } catch (_: Throwable) { null }
+                val myKey = try { b.keyBinding?.saveString() } catch (_: Throwable) { null }
                 val conflict = if (myKey == null) null else allKeys.firstOrNull { other ->
                     b.keyBinding != null && other !== b.keyBinding &&
-                        try { other.boundKeyTranslationKey == myKey } catch (_: Throwable) { false }
+                        try { other.saveString() == myKey } catch (_: Throwable) { false }
                 }
                 Row(b, conflict)
             }
         } catch (_: Throwable) { rows = emptyList() }
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
-            context.fill(0, 0, this.width, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.keybinds.header"), 10, 10, WHITE)
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.keybinds.hint"), 10, 24, WHITE)
+            graphics.fill(0, 0, this.width, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
+            graphics.text(tr, L10n.t("iustitia.screen.keybinds.header"), 10, 10, WHITE)
+            graphics.text(tr, L10n.t("iustitia.screen.keybinds.hint"), 10, 24, WHITE)
             var y = 44
             for (r in rows) {
                 try {
                     val conflictColor = r.conflict != null
                     val kb = r.bind.keyBinding
                     val keyText = if (kb == null) L10n.t("iustitia.screen.keybinds.unregistered")
-                        else try { kb.boundKeyLocalizedText } catch (_: Throwable) { Component.literal("?") }
+                        else try { kb.translatedKeyMessage } catch (_: Throwable) { Component.literal("?") }
                     val keyStr = "§f${keyText.string}"
                     val nameColor = if (conflictColor) "§c" else "§f"
-                    context.drawTextWithShadow(tr, Component.literal("$nameColor${r.bind.label}"), 14, y, WHITE)
+                    graphics.text(tr, Component.literal("$nameColor${r.bind.label}"), 14, y, WHITE)
                     val keyDrawn = Component.literal("§7[§r$keyStr§7]")
-                    context.drawTextWithShadow(tr, keyDrawn, 200, y, WHITE)
-                    context.drawTextWithShadow(tr, Component.literal("§7${r.bind.description}"), 14, y + 11, WHITE)
+                    graphics.text(tr, keyDrawn, 200, y, WHITE)
+                    graphics.text(tr, Component.literal("§7${r.bind.description}"), 14, y + 11, WHITE)
                     if (conflictColor && r.conflict != null) {
-                        val otherName = try { Component.translatable(r.conflict.id).string }
-                        catch (_: Throwable) { r.conflict.id }
-                        context.drawTextWithShadow(tr, L10n.t("iustitia.screen.keybinds.conflict", otherName), 200, y + 11, WHITE)
+                        val otherName = try { Component.translatable(r.conflict.name).string }
+                        catch (_: Throwable) { r.conflict.name }
+                        graphics.text(tr, L10n.t("iustitia.screen.keybinds.conflict", otherName), 200, y + 11, WHITE)
                     }
                 } catch (_: Throwable) {}
                 y += 26
@@ -77,7 +90,7 @@ class KeybindHubScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) {}
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     companion object {
         private val TITLE get() = L10n.t("iustitia.screen.keybinds.title")

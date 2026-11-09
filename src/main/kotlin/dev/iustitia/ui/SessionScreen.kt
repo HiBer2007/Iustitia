@@ -4,7 +4,7 @@ import dev.iustitia.config.ConfigManager
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -28,7 +28,19 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
     private var summary: Summary = Summary(0, 0, 0, 0, 0, null, 0, emptyList())
     private var compact: Boolean = false
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the
+     * summary keeps its old look over the live game; with no level loaded the vanilla
+     * panorama/blur/menu background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() {
         try { compact = ConfigManager.config.compactMode; rebuild() } catch (_: Throwable) {}
@@ -57,33 +69,33 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
         }
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
-            context.fill(0, 0, this.width, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
+            graphics.fill(0, 0, this.width, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
             val s = summary
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.header"), 10, 10, WHITE)
+            graphics.text(tr, L10n.t("iustitia.screen.session.header"), 10, 10, WHITE)
             if (compact) {
-                context.drawTextWithShadow(tr, Component.literal(
+                graphics.text(tr, Component.literal(
                     L10n.s("iustitia.screen.session.compact", s.total, s.green, s.yellow, s.red, s.totalAlerts) +
                     (s.peakName?.let { L10n.s("iustitia.screen.session.peak", it, s.peakScore) } ?: "")
                 ), 10, 28, WHITE)
                 return
             }
             var y = 30
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.playersTracked", s.total), 10, y, WHITE); y += 12
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.tierCounts", s.green, s.yellow, s.red), 10, y, WHITE); y += 16
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.alerts", s.totalAlerts), 10, y, WHITE); y += 12
+            graphics.text(tr, L10n.t("iustitia.screen.session.playersTracked", s.total), 10, y, WHITE); y += 12
+            graphics.text(tr, L10n.t("iustitia.screen.session.tierCounts", s.green, s.yellow, s.red), 10, y, WHITE); y += 16
+            graphics.text(tr, L10n.t("iustitia.screen.session.alerts", s.totalAlerts), 10, y, WHITE); y += 12
             if (s.peakName != null && s.peakScore > 0) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.peakLine", s.peakName, s.peakScore), 10, y, WHITE); y += 16
+                graphics.text(tr, L10n.t("iustitia.screen.session.peakLine", s.peakName, s.peakScore), 10, y, WHITE); y += 16
             } else y += 8
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.topOffenders"), 10, y, WHITE); y += 12
+            graphics.text(tr, L10n.t("iustitia.screen.session.topOffenders"), 10, y, WHITE); y += 12
             if (s.top.isEmpty()) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.session.noAlerts"), 14, y, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.session.noAlerts"), 14, y, WHITE)
             } else {
                 s.top.forEach { (name, count) ->
-                    context.drawTextWithShadow(tr, Component.literal(" §f$name §7$count"), 14, y, WHITE); y += 12
+                    graphics.text(tr, Component.literal(" §f$name §7$count"), 14, y, WHITE); y += 12
                 }
             }
         } catch (_: Throwable) {}
@@ -94,7 +106,7 @@ class SessionScreen(private val parent: Screen?) : Screen(TITLE) {
         return false
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     companion object {
         private val TITLE get() = L10n.t("iustitia.screen.session.title")

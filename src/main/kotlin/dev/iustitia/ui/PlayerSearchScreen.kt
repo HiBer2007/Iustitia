@@ -3,7 +3,7 @@ package dev.iustitia.ui
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.tracking.EntityTrackerManager
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.components.EditBox
@@ -21,8 +21,8 @@ import java.util.UUID
  * opens [PlayerHistoryScreen] for that player. Typing filters by case-insensitive `contains`.
  *
  * Manual rendering (not [net.minecraft.client.gui.components.ContainerObjectSelectionList]) keeps the whole
- * interaction under our control via the confirmed 1.21.11 `Click`-based input APIs and avoids
- * the `EntryListWidget$Entry`/`Click` dispatch uncertainty. Whole body fail-open.
+ * interaction under our control via the confirmed 26.3 `MouseButtonEvent`-based input APIs and avoids
+ * the `ContainerObjectSelectionList`/`MouseButtonEvent` dispatch uncertainty. Whole body fail-open.
  */
 class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
 
@@ -33,15 +33,28 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
     private var rows: List<Row> = emptyList()
     private var scroll: Int = 0
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the list
+     * keeps its old look over the live game; with no level loaded the vanilla panorama/blur/menu
+     * background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() {
         try {
             val w = this.width
-            searchField = EditBox(this.textRenderer, 10, 36, w - 20, 16, L10n.t("iustitia.screen.playerSearch.fieldLabel"))
-                .also { it.setMaxLength(32); it.text = filter; it.setChangedListener { f -> filter = f; rebuild(); scroll = 0 } }
-            addDrawableChild(searchField)
-            setInitialFocus(searchField)
+            val field = EditBox(this.font, 10, 36, w - 20, 16, L10n.t("iustitia.screen.playerSearch.fieldLabel"))
+                .also { it.setMaxLength(32); it.setValue(filter); it.setResponder { f -> filter = f; rebuild(); scroll = 0 } }
+            searchField = field
+            addRenderableWidget(field)
+            setInitialFocus(field)
             rebuild()
         } catch (_: Throwable) {}
     }
@@ -66,21 +79,21 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) { rows = emptyList() }
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
             // F1-equivalent backdrop: fill the whole screen with a dark, mostly-opaque rectangle
             // BEFORE drawing content, so the in-game HUD (hotbar/chat/crosshair) and the world
             // behind the transparent screen don't bleed through and hurt the history's
-            // readability. Fills respect alpha (unlike drawText), so this is visible. Nothing is
+            // readability. Fills respect alpha (unlike text), so this is visible. Nothing is
             // mutated globally — when the screen closes, normal game rendering resumes, so the
             // "F1" state auto-restores without touching the vanilla hudHidden flag.
-            context.fill(0, 0, this.width, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerSearch.header"), 10, 10, WHITE)
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerSearch.hint"), 10, 24, WHITE)
+            graphics.fill(0, 0, this.width, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
+            graphics.text(tr, L10n.t("iustitia.screen.playerSearch.header"), 10, 10, WHITE)
+            graphics.text(tr, L10n.t("iustitia.screen.playerSearch.hint"), 10, 24, WHITE)
             if (rows.isEmpty()) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerSearch.empty"), 10, listTop + 2, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.playerSearch.empty"), 10, listTop + 2, WHITE)
                 return
             }
             val maxScroll = maxScroll()
@@ -92,19 +105,19 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
                 val r = rows[idx]
                 val y = listTop + i * ROW_H
                 val hovered = mouseX in listLeft..(listLeft + rowWidth()) && mouseY in y..(y + ROW_H)
-                if (hovered) context.fill(listLeft, y, listLeft + rowWidth(), y + ROW_H, 0x40FFFFFF)
+                if (hovered) graphics.fill(listLeft, y, listLeft + rowWidth(), y + ROW_H, 0x40FFFFFF)
                 val glyph = glyphFor(r.tier)
-                context.drawTextWithShadow(tr, Component.literal(glyph + " §f" + r.name), listLeft + 2, y + 2, WHITE)
+                graphics.text(tr, Component.literal(glyph + " §f" + r.name), listLeft + 2, y + 2, WHITE)
                 val right = listLeft + rowWidth() - 4
                 val alertsTxt = Component.literal(L10n.s("iustitia.screen.playerSearch.alerts", r.alerts) + (r.top?.let { L10n.s("iustitia.screen.playerHistory.topCheck", it) } ?: ""))
-                context.drawTextWithShadow(tr, alertsTxt, right - tr.getWidth(alertsTxt), y + 2, WHITE)
+                graphics.text(tr, alertsTxt, right - tr.width(alertsTxt), y + 2, WHITE)
             }
             // scrollbar
-            if (maxScroll > 0) drawScrollbar(context, visible, maxScroll)
+            if (maxScroll > 0) drawScrollbar(graphics, visible, maxScroll)
             if (rows.size > visible) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerSearch.footerMore", rows.size), 10, this.height - 14, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.playerSearch.footerMore", rows.size), 10, this.height - 14, WHITE)
             } else {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerSearch.footer", rows.size), 10, this.height - 14, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.playerSearch.footer", rows.size), 10, this.height - 14, WHITE)
             }
         } catch (_: Throwable) {}
     }
@@ -119,7 +132,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
             val idx = scroll + i
             if (i in 0 until visibleRows() && idx in rows.indices) {
                 val r = rows[idx]
-                client?.setScreen(PlayerHistoryScreen(r.uuid, this))
+                minecraft.gui.setScreen(PlayerHistoryScreen(r.uuid, this))
                 return true
             }
             // scrollbar drag area
@@ -139,7 +152,7 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
         return super.mouseScrolled(x, y, h, v)
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     // ---- layout helpers ----
     private val listTop: Int get() = 58
@@ -148,13 +161,13 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
     private fun rowWidth(): Int = this.width - 20
     private fun visibleRows(): Int = ((listBottom - listTop) / ROW_H).coerceAtLeast(1)
     private fun maxScroll(): Int = (rows.size - visibleRows()).coerceAtLeast(0)
-    private fun drawScrollbar(context: GuiGraphics, visible: Int, maxScroll: Int) {
+    private fun drawScrollbar(graphics: GuiGraphicsExtractor, visible: Int, maxScroll: Int) {
         val trackH = listBottom - listTop
         val knobH = (trackH * visible / (rows.size)).coerceAtLeast(10)
         val knobY = listTop + (trackH - knobH) * scroll / maxScroll
         val sx = listLeft + rowWidth() + 2
-        context.fill(sx, listTop, sx + 4, listBottom, 0x33FFFFFF)
-        context.fill(sx, knobY, sx + 4, knobY + knobH, 0x66FFFFFF)
+        graphics.fill(sx, listTop, sx + 4, listBottom, 0x33FFFFFF)
+        graphics.fill(sx, knobY, sx + 4, knobY + knobH, 0x66FFFFFF)
     }
 
     companion object {
@@ -166,9 +179,9 @@ class PlayerSearchScreen(private val parent: Screen?) : Screen(TITLE) {
             FlagHistory.Tier.RED -> "§c[X]§r"
         }
         // Opaque white (ARGB 0xFFFFFFFF). Do NOT use 0xFFFFFF — that is 0x00FFFFFF (alpha 0),
-        // and DrawContext.drawText no-ops when ColorHelper.getAlpha(color) == 0 (verified in the
-        // 1.21.11 bytecode), so any text drawn with 0xFFFFFF is completely invisible. -1 is the
-        // signed-int form of 0xFFFFFFFF. Every drawTextWithShadow color in this screen uses this.
+        // and GuiGraphicsExtractor.text no-ops when ARGB.alpha(color) == 0 (verified in the 26.3
+        // sources), so any text drawn with 0xFFFFFF is completely invisible. -1 is the signed-int
+        // form of 0xFFFFFFFF. Every graphics.text color in this screen uses this.
         private const val WHITE = -1
         /** Dark, ~80%-opaque backdrop (ARGB 0xCC101010) covering the HUD/world behind the screen.
          *  `.toInt()` because the 8-hex literal's high alpha (≥0x80) makes it overflow Int→Long

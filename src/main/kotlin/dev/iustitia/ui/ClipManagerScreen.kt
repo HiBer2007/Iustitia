@@ -7,7 +7,7 @@ import dev.iustitia.replay.ClipPlayback
 import dev.iustitia.replay.ClipStore
 import dev.iustitia.replay.ReplayState
 import net.minecraft.client.input.MouseButtonEvent
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
@@ -18,9 +18,9 @@ import net.minecraft.network.chat.Component
  * fully + starts a replay, like `/ius playclip <name>`); **right-click deletes it** ([ClipStore.delete]).
  *
  * Manual rendering (not [net.minecraft.client.gui.components.ContainerObjectSelectionList]) mirrors
- * [PlayerSearchScreen] — keeps the whole interaction under our control via the confirmed 1.21.11
- * `Click`-based input APIs and avoids the `EntryListWidget$Entry`/`Click` dispatch uncertainty.
- * Whole body fail-open. Display-only: adds NO detection.
+ * [PlayerSearchScreen] — keeps the whole interaction under our control via the confirmed 26.3
+ * `MouseButtonEvent`-based input APIs and avoids the `ContainerObjectSelectionList`/`MouseButtonEvent`
+ * dispatch uncertainty. Whole body fail-open. Display-only: adds NO detection.
  */
 class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
 
@@ -30,7 +30,19 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
     private var scroll: Int = 0
     private var status: String? = null
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the list
+     * keeps its old look over the live game; with no level loaded the vanilla panorama/blur/menu
+     * background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() {
         try { rebuild() } catch (_: Throwable) {}
@@ -44,16 +56,16 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) { rows = emptyList() }
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
-            context.fill(0, 0, this.width, this.height, BG)
-            val tr = this.textRenderer
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.clips.header"), 10, 10, WHITE)
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.clips.hint"), 10, 24, WHITE)
-            context.drawTextWithShadow(tr, Component.literal("§7" + ClipStore.dirDisplay()), 10, 38, WHITE)
+            graphics.fill(0, 0, this.width, this.height, BG)
+            val tr = this.font
+            graphics.text(tr, L10n.t("iustitia.screen.clips.header"), 10, 10, WHITE)
+            graphics.text(tr, L10n.t("iustitia.screen.clips.hint"), 10, 24, WHITE)
+            graphics.text(tr, Component.literal("§7" + ClipStore.dirDisplay()), 10, 38, WHITE)
             if (rows.isEmpty()) {
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.clips.emptyHint"), 10, listTop + 2, WHITE)
-                status?.let { context.drawTextWithShadow(tr, Component.literal(it), 10, this.height - 14, WHITE) }
+                graphics.text(tr, L10n.t("iustitia.screen.clips.emptyHint"), 10, listTop + 2, WHITE)
+                status?.let { graphics.text(tr, Component.literal(it), 10, this.height - 14, WHITE) }
                 return
             }
             val maxScroll = maxScroll()
@@ -65,19 +77,19 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
                 val r = rows[idx]
                 val y = listTop + i * ROW_H
                 val hovered = mouseX in listLeft..(listLeft + rowWidth()) && mouseY in y..(y + ROW_H)
-                if (hovered) context.fill(listLeft, y, listLeft + rowWidth(), y + ROW_H, 0x40FFFFFF)
+                if (hovered) graphics.fill(listLeft, y, listLeft + rowWidth(), y + ROW_H, 0x40FFFFFF)
                 val counts = r.meta?.let {
                     val base = L10n.s("iustitia.screen.clips.counts", it.frameCount, it.alertCount)
                     val terrain = if (it.terrainBlocks > 0) L10n.s("iustitia.screen.clips.countsTerrain", it.terrainBlocks) else ""
                     val chunks = if (it.chunkSections > 0) L10n.s("iustitia.screen.clips.countsWorld", it.chunkSections) else ""
                     "$base$terrain$chunks"
                 } ?: L10n.s("iustitia.screen.clips.unreadable")
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.clips.row", r.name, counts), listLeft + 2, y + 3, WHITE)
+                graphics.text(tr, L10n.t("iustitia.screen.clips.row", r.name, counts), listLeft + 2, y + 3, WHITE)
             }
-            if (maxScroll > 0) drawScrollbar(context, visible, maxScroll)
+            if (maxScroll > 0) drawScrollbar(graphics, visible, maxScroll)
             val foot = if (rows.size > visible) L10n.s("iustitia.screen.clips.footerMore", rows.size) else L10n.s("iustitia.screen.clips.footer", rows.size)
-            context.drawTextWithShadow(tr, Component.literal(foot), 10, this.height - 14, WHITE)
-            status?.let { context.drawTextWithShadow(tr, Component.literal(it), 10, this.height - 26, WHITE) }
+            graphics.text(tr, Component.literal(foot), 10, this.height - 14, WHITE)
+            status?.let { graphics.text(tr, Component.literal(it), 10, this.height - 26, WHITE) }
         } catch (_: Throwable) {}
     }
 
@@ -114,11 +126,11 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
      *  so the two entry points can't drift. */
     private fun play(name: String) {
         try {
-            val mc = client ?: return
+            val mc = minecraft ?: return
             when (val r = ClipPlayback.start(name, ReplayState.SPEED_FULL)) {
                 is ClipPlayback.Result.Started -> {
-                    mc.setScreen(null)
-                    mc.player?.sendMessage(L10n.t("iustitia.screen.clips.playedMsg", name, NumFmt.d(digits = 2, v = ReplayState.SPEED_FULL), r.frames), false)
+                    mc.gui.setScreen(null)
+                    mc.player?.sendSystemMessage(L10n.t("iustitia.screen.clips.playedMsg", name, NumFmt.d(digits = 2, v = ReplayState.SPEED_FULL), r.frames))
                 }
                 is ClipPlayback.Result.LoadFailed -> {
                     // The reason rides along (truncated — the status line is one row wide).
@@ -139,7 +151,7 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
         } catch (_: Throwable) { status = L10n.s("iustitia.screen.clips.statusDeleteFailed") }
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     // ---- layout helpers ----
     private val listTop: Int get() = 56
@@ -148,13 +160,13 @@ class ClipManagerScreen(private val parent: Screen?) : Screen(TITLE) {
     private fun rowWidth(): Int = this.width - 20
     private fun visibleRows(): Int = ((listBottom - listTop) / ROW_H).coerceAtLeast(1)
     private fun maxScroll(): Int = (rows.size - visibleRows()).coerceAtLeast(0)
-    private fun drawScrollbar(context: GuiGraphics, visible: Int, maxScroll: Int) {
+    private fun drawScrollbar(graphics: GuiGraphicsExtractor, visible: Int, maxScroll: Int) {
         val trackH = listBottom - listTop
         val knobH = (trackH * visible / rows.size).coerceAtLeast(10)
         val knobY = listTop + (trackH - knobH) * scroll / maxScroll
         val sx = listLeft + rowWidth() + 2
-        context.fill(sx, listTop, sx + 4, listBottom, 0x33FFFFFF)
-        context.fill(sx, knobY, sx + 4, knobY + knobH, 0x66FFFFFF)
+        graphics.fill(sx, listTop, sx + 4, listBottom, 0x33FFFFFF)
+        graphics.fill(sx, knobY, sx + 4, knobY + knobH, 0x66FFFFFF)
     }
 
     companion object {
