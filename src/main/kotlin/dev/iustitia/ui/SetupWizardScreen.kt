@@ -3,7 +3,7 @@ package dev.iustitia.ui
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.config.PresetManager
 import dev.iustitia.i18n.L10n
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -38,7 +38,8 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
     private data class Preset(val label: String, val blurb: List<String>, val apply: () -> Unit)
 
     /** A clickable rectangle plus the blurb lines that fit inside it. [layout] produces these, and
-     *  both [render] and [mouseClicked] read them, so hit-testing cannot disagree with the drawing. */
+     *  both [extractRenderState] and [mouseClicked] read them, so hit-testing cannot disagree with
+     *  the drawing. */
     private data class Box(val x: Int, val y: Int, val w: Int, val h: Int, val lines: List<String>)
 
     private data class Layout(val headerY: Int, val rows: List<Box>, val skip: Box)
@@ -62,7 +63,19 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
         emptyList()
     }
 
-    override fun shouldPause(): Boolean = true
+    override fun isPauseScreen(): Boolean = true
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the wizard
+     * keeps its old look when opened in-game; on the title screen (no level) the vanilla
+     * panorama/blur/menu background still runs, as before.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() { try {} catch (_: Throwable) {} }
 
@@ -72,7 +85,7 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
             ConfigManager.save()
             try { dev.iustitia.Iustitia.onConfigReloaded() } catch (_: Throwable) {}
         } catch (_: Throwable) {}
-        client?.setScreen(parent)
+        minecraft.gui.setScreen(parent)
     }
 
     /** How many blurb lines a button has room for on this window. GUI scale 4 on a 1080p display
@@ -85,8 +98,8 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
     }
 
     /** Where everything goes. Character counts stand in for font metrics so this needs no
-     *  [DrawContext] and both callers can share it. The block is centered vertically, and clamps to
-     *  8px from the top rather than going negative on a window too short for it. */
+     *  [GuiGraphicsExtractor] and both callers can share it. The block is centered vertically, and
+     *  clamps to 8px from the top rather than going negative on a window too short for it. */
     private fun layout(): Layout {
         val budget = blurbBudget()
         val rowH = 8 + (1 + budget) * 10
@@ -104,34 +117,34 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
         return Layout(headerY, rows, Box(x, y, BOX_W, SKIP_H, emptyList()))
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
-            context.fill(0, 0, this.width, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
+            graphics.fill(0, 0, this.width, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
             val cx = this.width / 2
             val l = layout()
             for ((i, line) in HEADER.withIndex()) {
-                context.drawTextWithShadow(tr, Component.literal(line), cx - tr.getWidth(line) / 2, l.headerY + i * LINE_H, WHITE)
+                graphics.text(tr, Component.literal(line), cx - tr.width(line) / 2, l.headerY + i * LINE_H, WHITE)
             }
             for ((i, box) in l.rows.withIndex()) {
-                drawBox(context, box, mouseX, mouseY)
-                context.drawTextWithShadow(tr, Component.literal(presets[i].label), box.x + 8, box.y + 6, WHITE)
+                drawBox(graphics, box, mouseX, mouseY)
+                graphics.text(tr, Component.literal(presets[i].label), box.x + 8, box.y + 6, WHITE)
                 for ((j, line) in box.lines.withIndex()) {
-                    context.drawTextWithShadow(tr, Component.literal("§7$line"), box.x + 8, box.y + 16 + j * LINE_H, WHITE)
+                    graphics.text(tr, Component.literal("§7$line"), box.x + 8, box.y + 16 + j * LINE_H, WHITE)
                 }
             }
             val s = l.skip
-            drawBox(context, s, mouseX, mouseY)
-            context.drawTextWithShadow(tr, Component.literal(SKIP_LABEL), s.x + 8, s.y + 6, WHITE)
+            drawBox(graphics, s, mouseX, mouseY)
+            graphics.text(tr, Component.literal(SKIP_LABEL), s.x + 8, s.y + 6, WHITE)
         } catch (_: Throwable) {}
     }
 
-    private fun drawBox(context: GuiGraphics, box: Box, mouseX: Int, mouseY: Int) {
+    private fun drawBox(graphics: GuiGraphicsExtractor, box: Box, mouseX: Int, mouseY: Int) {
         if (mouseX in box.x..(box.x + box.w) && mouseY in box.y..(box.y + box.h)) {
-            context.fill(box.x, box.y, box.x + box.w, box.y + box.h, 0x40FFFFFF)
+            graphics.fill(box.x, box.y, box.x + box.w, box.y + box.h, 0x40FFFFFF)
         }
-        border(context, box.x, box.y, box.w, box.h, 0xFF333333.toInt())
+        border(graphics, box.x, box.y, box.w, box.h, 0xFF333333.toInt())
     }
 
     override fun mouseClicked(click: MouseButtonEvent, button: Boolean): Boolean {
@@ -153,14 +166,15 @@ class SetupWizardScreen(private val parent: Screen?) : Screen(TITLE) {
         return false
     }
 
-    override fun close() { finish() }
+    override fun onClose() { finish() }
 
-    /** 1.21.11 DrawContext has no drawBorder; draw a 1px outline with four fills. */
-    private fun border(context: GuiGraphics, x: Int, y: Int, w: Int, h: Int, color: Int) {
-        context.fill(x, y, x + w, y + 1, color)
-        context.fill(x, y + h - 1, x + w, y + h, color)
-        context.fill(x, y, x + 1, y + h, color)
-        context.fill(x + w - 1, y, x + w, y + h, color)
+    /** 1px outline drawn as four explicit fills (26.3's [GuiGraphicsExtractor.outline] does the same
+     *  thing; kept hand-rolled so the border layer stays identical to the ported 1.21.11 layout). */
+    private fun border(graphics: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, color: Int) {
+        graphics.fill(x, y, x + w, y + 1, color)
+        graphics.fill(x, y + h - 1, x + w, y + h, color)
+        graphics.fill(x, y, x + 1, y + h, color)
+        graphics.fill(x + w - 1, y, x + w, y + h, color)
     }
 
     companion object {

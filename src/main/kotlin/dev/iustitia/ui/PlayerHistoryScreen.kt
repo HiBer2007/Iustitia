@@ -6,7 +6,7 @@ import dev.iustitia.history.Evidence
 import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import net.minecraft.client.input.MouseButtonEvent
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
@@ -26,8 +26,8 @@ import net.minecraft.network.chat.Component
  * `@t{tick} {label} vl={vl}` and, when the flag carries an [Evidence] payload, a second line
  * with the sub-label · measurement/threshold · position · victim · extra — the "why".
  *
- * Manually rendered + scrolled (uniform 20px rows) for full control over the confirmed 1.21.11
- * `Click`-based input API. Whole body fail-open.
+ * Manually rendered + scrolled (uniform 20px rows) for full control over the confirmed 26.3
+ * `MouseButtonEvent`-based input API. Whole body fail-open.
  */
 class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: Screen?) :
     Screen(L10n.t("iustitia.screen.playerHistory.title")) {
@@ -47,7 +47,19 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
     private val counts: Map<String, Int> get() = FlagHistory.flagCounts(uuid)
     private val maxVlMap: Map<String, Double> get() = FlagHistory.maxVlByCheck(uuid)
 
-    override fun shouldPause(): Boolean = false
+    override fun isPauseScreen(): Boolean = false
+
+    /**
+     * 26.3 draws the blurred in-world menu background behind a screen that is not `isInGameUi`-
+     * flagged, where 1.21.11 drew the plain in-game gradient whenever a level was loaded. Re-draw
+     * that gradient (vanilla's [extractTransparentBackground] fill, same ARGB values) so the
+     * timeline keeps its old look over the live game; with no level loaded the vanilla
+     * panorama/blur/menu background still runs.
+     */
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (minecraft.level != null) extractTransparentBackground(graphics)
+        else super.extractBackground(graphics, mouseX, mouseY, partialTick)
+    }
 
     override fun init() { /* fully data-driven; rebuilt each render */ }
 
@@ -71,47 +83,47 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
         return out
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         try {
             // F1-equivalent backdrop: a dark, mostly-opaque fill behind the content so the
             // in-game HUD (hotbar/chat) and world don't bleed through this transparent screen
-            // and hurt the report's readability. Fills respect alpha (unlike drawText), so this
+            // and hurt the report's readability. Fills respect alpha (unlike text), so this
             // is visible. No global state is touched — closing the screen resumes normal
             // rendering, so the "F1" effect auto-restores.
-            context.fill(0, 0, this.width, this.height, BG)
-            super.render(context, mouseX, mouseY, delta)
-            val tr = this.textRenderer
+            graphics.fill(0, 0, this.width, this.height, BG)
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+            val tr = this.font
             val x = 10
             var y = 12
             // ---- profile card (#2) ----
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.header", glyphFor(tier), name, tierLabel(tier)), x, y, WHITE); y += 14
+            graphics.text(tr, L10n.t("iustitia.screen.playerHistory.header", glyphFor(tier), name, tierLabel(tier)), x, y, WHITE); y += 14
             val sp = FlagHistory.span(uuid)
             val spanTxt = if (sp == null) L10n.s("iustitia.screen.playerHistory.spanNone") else L10n.s("iustitia.screen.playerHistory.span", sp.first, sp.second)
-            context.drawTextWithShadow(tr, Component.literal(spanTxt), x, y, WHITE); y += 12
+            graphics.text(tr, Component.literal(spanTxt), x, y, WHITE); y += 12
             val total = counts.values.sum()
             val maxVl = maxVlMap.values.maxOrNull() ?: 0.0
-            context.drawTextWithShadow(tr, Component.literal(
+            graphics.text(tr, Component.literal(
                 L10n.s("iustitia.screen.playerHistory.stats", FlagHistory.sessionAlertCount(uuid), total, NumFmt.d(digits = 1, v = maxVl)) +
                     (FlagHistory.topCheck(uuid)?.let { L10n.s("iustitia.screen.playerHistory.topCheck", it) } ?: "")), x, y, WHITE); y += 12
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.confidence", FlagHistory.confidenceLine(uuid)), x, y, WHITE); y += 14
+            graphics.text(tr, L10n.t("iustitia.screen.playerHistory.confidence", FlagHistory.confidenceLine(uuid)), x, y, WHITE); y += 14
             // max vl per check bar (top 8)
-            context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.maxVlHeader"), x, y, WHITE); y += 11
+            graphics.text(tr, L10n.t("iustitia.screen.playerHistory.maxVlHeader"), x, y, WHITE); y += 11
             val maxVlForScale = (maxVlMap.values.maxOrNull() ?: 0.0).coerceAtLeast(0.001)
             maxVlMap.entries.take(8).forEach { (cid, vl) ->
                 val filled = (vl / maxVlForScale * 10.0).toInt().coerceIn(0, 10)
                 val bar = "▓".repeat(filled) + "░".repeat(10 - filled)
-                context.drawTextWithShadow(tr, Component.literal("§b" + cid.padEnd(16).take(16) + " §7$bar §f${NumFmt.d(digits = 1, v = vl)}"), x, y, WHITE); y += 11
+                graphics.text(tr, Component.literal("§b" + cid.padEnd(16).take(16) + " §7$bar §f${NumFmt.d(digits = 1, v = vl)}"), x, y, WHITE); y += 11
             }
             y += 4
             // ---- filter row ----
             val checkLabel = L10n.s("iustitia.screen.playerHistory.checkFilter", checkFilter ?: L10n.s("iustitia.screen.playerHistory.filterAll"))
             val timeLabel = L10n.s("iustitia.screen.playerHistory.timeFilter", timeLabel())
-            val checkW = tr.getWidth(Component.literal(checkLabel)) + 2
-            context.drawTextWithShadow(tr, Component.literal(checkLabel), x, y, WHITE)
-            context.drawTextWithShadow(tr, Component.literal(timeLabel), x + checkW + 12, y, WHITE)
+            val checkW = tr.width(Component.literal(checkLabel)) + 2
+            graphics.text(tr, Component.literal(checkLabel), x, y, WHITE)
+            graphics.text(tr, Component.literal(timeLabel), x + checkW + 12, y, WHITE)
             filterY = y
             filterCheckX = x; filterCheckW = checkW
-            filterTimeX = x + checkW + 12; filterTimeW = tr.getWidth(Component.literal(timeLabel)) + 2
+            filterTimeX = x + checkW + 12; filterTimeW = tr.width(Component.literal(timeLabel)) + 2
             y += 16
             // ---- timeline body (#1) ----
             val bodyTop = y
@@ -120,7 +132,7 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
             val visible = ((bodyBottom - bodyTop) / ROW_H).coerceAtLeast(1)
             val maxScroll = (list.size - visible).coerceAtLeast(0)
             scroll = scroll.coerceIn(0, maxScroll)
-            context.enableScissor(x, bodyTop, this.width - 4, bodyBottom)
+            graphics.enableScissor(x, bodyTop, this.width - 4, bodyBottom)
             for (i in 0 until visible) {
                 val idx = scroll + i
                 if (idx >= list.size) break
@@ -129,27 +141,27 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
                 val hovered = mouseX in x..(this.width - 4) && mouseY in ry..(ry + ROW_H)
                 when (item) {
                     is Item.Group -> {
-                        if (hovered) context.fill(x, ry, this.width - 4, ry + ROW_H, 0x30FFFF00)
-                        context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.groupHeader", item.checkId, item.count, NumFmt.d(digits = 1, v = item.maxVl)), x + 2, ry + 4, WHITE)
+                        if (hovered) graphics.fill(x, ry, this.width - 4, ry + ROW_H, 0x30FFFF00)
+                        graphics.text(tr, L10n.t("iustitia.screen.playerHistory.groupHeader", item.checkId, item.count, NumFmt.d(digits = 1, v = item.maxVl)), x + 2, ry + 4, WHITE)
                     }
                     is Item.Row -> {
-                        if (hovered) context.fill(x, ry, this.width - 4, ry + ROW_H, 0x20FFFFFF)
+                        if (hovered) graphics.fill(x, ry, this.width - 4, ry + ROW_H, 0x20FFFFFF)
                         val f = item.flag
-                        context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.flagRow", f.tick, f.label, NumFmt.d(digits = 1, v = f.vl)), x + 2, ry + 2, WHITE)
+                        graphics.text(tr, L10n.t("iustitia.screen.playerHistory.flagRow", f.tick, f.label, NumFmt.d(digits = 1, v = f.vl)), x + 2, ry + 2, WHITE)
                         val ev = f.evidence
-                        if (ev != null) context.drawTextWithShadow(tr, Component.literal("§7    " + evidenceLine(ev)), x + 2, ry + 12, WHITE)
+                        if (ev != null) graphics.text(tr, Component.literal("§7    " + evidenceLine(ev)), x + 2, ry + 12, WHITE)
                     }
                 }
             }
-            context.disableScissor()
+            graphics.disableScissor()
             if (maxScroll > 0) {
                 val trackH = bodyBottom - bodyTop
                 val knobH = (trackH * visible / list.size).coerceAtLeast(10)
                 val knobY = bodyTop + (trackH - knobH) * scroll / maxScroll
                 val sx = this.width - 6
-                context.fill(sx, bodyTop, sx + 3, bodyBottom, 0x33FFFFFF)
-                context.fill(sx, knobY, sx + 3, knobY + knobH, 0x66FFFFFF)
-                context.drawTextWithShadow(tr, L10n.t("iustitia.screen.playerHistory.scrollHint"), x, this.height - 11, WHITE)
+                graphics.fill(sx, bodyTop, sx + 3, bodyBottom, 0x33FFFFFF)
+                graphics.fill(sx, knobY, sx + 3, knobY + knobH, 0x66FFFFFF)
+                graphics.text(tr, L10n.t("iustitia.screen.playerHistory.scrollHint"), x, this.height - 11, WHITE)
             }
         } catch (_: Throwable) {}
     }
@@ -173,13 +185,14 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
     }
 
     override fun mouseScrolled(x: Double, y: Double, h: Double, v: Double): Boolean {
-        // Lower clamp only here; render() recomputes maxScroll from the live layout and re-clamps
-        // to [0, maxScroll] before drawing each frame, so an over-scroll never produces empty frames.
+        // Lower clamp only here; extractRenderState recomputes maxScroll from the live layout and
+        // re-clamps to [0, maxScroll] before drawing each frame, so an over-scroll never produces
+        // empty frames.
         try { scroll = (scroll - v.toInt()).coerceAtLeast(0); return true } catch (_: Throwable) {}
         return super.mouseScrolled(x, y, h, v)
     }
 
-    override fun close() { client?.setScreen(parent) }
+    override fun onClose() { minecraft.gui.setScreen(parent) }
 
     private fun cycleCheck() {
         val keys = counts.keys.toList()  // already count-desc from FlagHistory.flagCounts
@@ -201,9 +214,9 @@ class PlayerHistoryScreen(private val uuid: java.util.UUID, private val parent: 
 
     companion object {
         private const val ROW_H = 20
-        // Opaque white (ARGB 0xFFFFFFFF). 0xFFFFFF is 0x00FFFFFF (alpha 0) and DrawContext.drawText
-        // no-ops when getAlpha(color)==0 (verified in 1.21.11), so 0xFFFFFF text is invisible. -1
-        // is the signed-int form of 0xFFFFFFFF.
+        // Opaque white (ARGB 0xFFFFFFFF). 0xFFFFFF is 0x00FFFFFF (alpha 0) and
+        // GuiGraphicsExtractor.text no-ops when ARGB.alpha(color) == 0 (verified in the 26.3
+        // sources), so 0xFFFFFF text is invisible. -1 is the signed-int form of 0xFFFFFFFF.
         private const val WHITE = -1
         /** Dark, ~80%-opaque backdrop (ARGB 0xCC101010) covering the HUD/world behind the screen.
          *  `.toInt()` because the 8-hex literal's high alpha (≥0x80) makes it overflow Int→Long

@@ -6,20 +6,24 @@ import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.info.FpHint
 import dev.iustitia.tracking.EntityTrackerManager
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
+import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 /**
- * Phase B HUD overlays — the two lowest-risk deferred render features, delivered via the stable
- * Fabric [HudRenderCallback] (HUD-text drawing only, no world render / no camera mixin / no mixin at
- * all → build-verifiable and launch-safe, unlike the WorldRenderEvents / camera-control pieces that
- * remain gated behind a runtime probe). Everything here is **display-only**: it reads existing
- * [FlagHistory] / [EntityTrackerManager] state and draws text; it touches no check, no packet, no
- * local-player state. Whole render body is fail-open (a HUD error must never crash the frame).
+ * Phase B HUD overlays — the two lowest-risk deferred render features, delivered as a Fabric
+ * [HudElement] registered with [HudElementRegistry] (HUD-text drawing only, no world render / no
+ * camera mixin / no mixin at all → build-verifiable and launch-safe, unlike the
+ * WorldRenderEvents / camera-control pieces that remain gated behind a runtime probe). Everything
+ * here is **display-only**: it reads existing [FlagHistory] / [EntityTrackerManager] state and
+ * draws text; it touches no check, no packet, no local-player state. Whole render body is fail-open
+ * (a HUD error must never crash the frame).
  *
  * Two overlays, each behind its own config toggle (default on, disable in `/ius config`):
  *
@@ -40,11 +44,12 @@ import java.util.UUID
  *    question. GREEN players show a one-line "clean" panel (no FP hint); the panel disappears the
  *    moment the crosshair leaves a player.
  *
- * The overlays are drawn ONLY when no fullscreen screen is open (the vanilla HUD render path that
- * fires this callback is skipped while a screen is up), so they never fight the keybind hub / config /
- * history screens.
+ * The overlays are drawn ONLY when no fullscreen screen is open. 26.3 still extracts the vanilla HUD
+ * (hotbar/chat/title) behind an open screen, so the element itself bails out on
+ * `mc.gui.screen() != null` — that guard is what keeps these overlays from fighting the keybind hub /
+ * config / history screens.
  */
-object HudOverlay {
+object HudOverlay : HudElement {
 
     /** Lag is "recent" for this many ticks after the last spike/burst (8 = 0.4s — same window as the
      *  alert lag-soften so the indicator and the `[lag]` prefix agree). */
@@ -91,25 +96,28 @@ object HudOverlay {
 
     private var panelCache: PanelModel? = null
 
-    /** Register the single HUD callback. Call once from `onInitializeClient`. Fail-open. */
+    /** Register the HUD element. Call once from `onInitializeClient`. Fail-open. */
     fun register() {
         try {
-            HudRenderCallback.EVENT.register(HudRenderCallback { context, _ ->
-                try { render(context) } catch (_: Throwable) { /* never crash the frame */ }
-            })
+            HudElementRegistry.addLast(ELEMENT_ID, this)
         } catch (_: Throwable) {
-            // fail-open: if the callback registration shape differs at runtime, the HUDs just don't
-            // appear — detection/tiering/alerts are unaffected.
+            // fail-open: if the registration shape differs at runtime, the HUDs just don't appear —
+            // detection/tiering/alerts are unaffected.
         }
     }
 
-    private fun render(context: GuiGraphics) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, deltaTracker: DeltaTracker) {
+        try { render(graphics) } catch (_: Throwable) { /* never crash the frame */ }
+    }
+
+    private fun render(graphics: GuiGraphicsExtractor) {
         val cfg = ConfigManager.config
         val mc = Minecraft.getInstance()
-        // Don't draw over an open screen (HUD render is normally skipped then, but guard anyway — a
-        // paused-game HUD over the keybind hub / config screen would be visual noise).
-        if (mc.currentScreen != null) return
-        val tr = mc.textRenderer ?: return
+        // Don't draw over an open screen: 26.3 still extracts the HUD behind an open screen, so
+        // this guard (not the vanilla pipeline) is what keeps a paused-game HUD off the keybind
+        // hub / config screens.
+        if (mc.gui.screen() != null) return
+        val tr = mc.font
 
         // Resolve the crosshair target ONCE per frame; dwell tracking and both panels share it.
         // Dwell tracking for the hover tooltip: increment while the crosshair rests on the SAME
@@ -125,16 +133,16 @@ object HudOverlay {
         val hoverActive = cfg.hoverTooltip && target != null && dwellTicks >= DWELL_TICKS
 
         if (cfg.lagHudIcon) {
-            try { renderLagIcon(context, tr) } catch (_: Throwable) {}
+            try { renderLagIcon(graphics, tr) } catch (_: Throwable) {}
         }
         if (target == null) return
         // The compact confidence panel and the expanded hover tooltip overlap in content — when the
         // hover tooltip is up (deliberate dwell), suppress the compact panel to avoid duplication.
         if (cfg.confidenceHud && !hoverActive) {
-            try { renderConfidencePanel(context, tr, mc, panelModel(target)) } catch (_: Throwable) {}
+            try { renderConfidencePanel(graphics, tr, mc, panelModel(target)) } catch (_: Throwable) {}
         }
         if (hoverActive) {
-            try { renderHoverTooltip(context, tr, mc, panelModel(target)) } catch (_: Throwable) {}
+            try { renderHoverTooltip(graphics, tr, mc, panelModel(target)) } catch (_: Throwable) {}
         }
     }
 
@@ -168,7 +176,7 @@ object HudOverlay {
     }
 
     /** Top-left `⚠ lag` while a server-lag spike / burst is recent. */
-    private fun renderLagIcon(context: GuiGraphics, tr: Font) {
+    private fun renderLagIcon(graphics: GuiGraphicsExtractor, tr: Font) {
         val tick = Iustitia.tickCounter
         val lagTick = EntityTrackerManager.lastServerLagTick
         val burstTick = EntityTrackerManager.lastLagBurstTick
@@ -176,14 +184,14 @@ object HudOverlay {
             (tick - burstTick) in 0..LAG_RECENT_TICKS
         if (!recent) return
         val line = L10n.t("iustitia.hud.lagIcon")
-        val w = tr.getWidth(line) + 8
-        context.fill(2, 2, 2 + w, 14, BG)
-        context.drawTextWithShadow(tr, line, 6, 5, WHITE)
+        val w = tr.width(line) + 8
+        graphics.fill(2, 2, 2 + w, 14, BG)
+        graphics.text(tr, line, 6, 5, WHITE)
     }
 
     /** Compact crosshair-target confidence panel, drawn just below the screen centre. */
     private fun renderConfidencePanel(
-        context: GuiGraphics, tr: Font, mc: Minecraft, model: PanelModel,
+        graphics: GuiGraphicsExtractor, tr: Font, mc: Minecraft, model: PanelModel,
     ) {
         val lines = model.lines
         if (lines.size <= 1) return  // head only + nothing else → skip (don't draw a bare header)
@@ -193,16 +201,16 @@ object HudOverlay {
         val padX = 6
         val padY = 4
         val lineH = 11
-        val panelW = (lines.maxOf { tr.getWidth(it) } + padX * 2)
+        val panelW = (lines.maxOf { tr.width(it) } + padX * 2)
         val panelH = lineH * lines.size + padY * 2
-        val sw = mc.getWindow().scaledWidth
+        val sw = mc.window.guiScaledWidth
         val x = (sw - panelW) / 2
-        val y = mc.getWindow().scaledHeight / 2 + 14
+        val y = mc.window.guiScaledHeight / 2 + 14
 
-        context.fill(x, y, x + panelW, y + panelH, BG)
+        graphics.fill(x, y, x + panelW, y + panelH, BG)
         var ty = y + padY
         for (ln in lines) {
-            context.drawTextWithShadow(tr, ln, x + padX, ty, WHITE)
+            graphics.text(tr, ln, x + padX, ty, WHITE)
             ty += lineH
         }
     }
@@ -218,7 +226,7 @@ object HudOverlay {
      * "clean" banner; it disappears the moment the crosshair leaves or changes target.
      */
     private fun renderHoverTooltip(
-        context: GuiGraphics, tr: Font, mc: Minecraft,
+        graphics: GuiGraphicsExtractor, tr: Font, mc: Minecraft,
         model: PanelModel,
     ) {
         val lines = model.hoverLines
@@ -226,20 +234,24 @@ object HudOverlay {
         val padX = 6
         val padY = 4
         val lineH = 11
-        val panelW = (lines.maxOf { tr.getWidth(it) } + padX * 2)
+        val panelW = (lines.maxOf { tr.width(it) } + padX * 2)
         val panelH = lineH * lines.size + padY * 2
-        val sw = mc.getWindow().scaledWidth
+        val sw = mc.window.guiScaledWidth
         val x = (sw - panelW) / 2
         // Top-center, below the lag icon row.
         val y = 18
 
-        context.fill(x, y, x + panelW, y + panelH, BG)
+        graphics.fill(x, y, x + panelW, y + panelH, BG)
         var ty = y + padY
         for (ln in lines) {
-            context.drawTextWithShadow(tr, ln, x + padX, ty, WHITE)
+            graphics.text(tr, ln, x + padX, ty, WHITE)
             ty += lineH
         }
     }
+
+    /** Stable id for the single overlay element in [HudElementRegistry]; one id = one layer, so a
+     *  second [register] cannot stack a duplicate copy of the overlays. */
+    private val ELEMENT_ID: Identifier = Identifier.fromNamespaceAndPath("iustitia", "overlay")
 
     // Opaque white (0xFFFFFFFF; 0xFFFFFF is alpha-0 = invisible — see PlayerSearchScreen).
     private const val WHITE = -1
