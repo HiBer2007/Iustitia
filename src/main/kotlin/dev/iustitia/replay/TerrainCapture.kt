@@ -109,7 +109,10 @@ object TerrainCapture {
         val loaded = BooleanArray((maxCX - minCX + 1) * (maxCZ - minCZ + 1))
         for (cx in minCX..maxCX) for (cz in minCZ..maxCZ) {
             loaded[(cx - minCX) * (maxCZ - minCZ + 1) + (cz - minCZ)] = try {
-                world.chunkManager.getChunk(cx, cz, ChunkStatus.FULL, false) != null
+                // 26.3: `ClientLevel.chunkManager` → `getChunkSource()` (ClientChunkCache); the 4-arg
+                // getChunk returns null when the chunk is not loaded, i.e. the same "treat as air"
+                // (fail-open) contract. Method form: `Level.chunkSource` is a protected field.
+                world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) != null
             } catch (_: Throwable) { false }
         }
 

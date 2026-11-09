@@ -211,7 +211,7 @@ object EntityTrackerManager {
         val client = Minecraft.getInstance()
         return try {
             val seen = HashSet<UUID>()
-            for (e in world.players) {
+            for (e in world.players()) {
                 if (e === client.player) continue
                 if (e !is RemotePlayer) continue
                 try {
@@ -256,8 +256,8 @@ object EntityTrackerManager {
         // capture server-space state from the live entity (Entity has no public getPos();
         // use getX/Y/Z which are public final).
         val newPos = Vec3(e.getX(), e.getY(), e.getZ())
-        val newYaw = e.yaw
-        val newPitch = e.pitch
+        val newYaw = e.getYRot()
+        val newPitch = e.getXRot()
 
         // deltas
         val rawDelta = newPos.subtract(tp.pos)
@@ -310,16 +310,23 @@ object EntityTrackerManager {
             }
         }
         // Hand-swing phase for the replay ghost's arm-swing animation (vanilla advances this
-        // client-side for other players; plain public field read, no side effects).
-        tp.handSwingTicks = try { e.handSwingTicks } catch (_: Throwable) { 0 }
+        // client-side for other players; plain public read, no side effects). 26.3 replaced the old
+        // integer `LivingEntity.swingTime` (Yarn `handSwingTicks`) with `getSwingAnimation`, a
+        // normalised 0..1 progress, so re-derive the tick phase the replay format stores:
+        // `progress * 6` (one vanilla swing is 6 ticks). `isSwinging()` gates out the single tick a
+        // swing ends, where the progress-to-zero reset would otherwise read as a full swing.
+        tp.handSwingTicks = try {
+            if (!e.isSwinging) 0
+            else kotlin.math.round(e.getSwingAnimation(1.0f) * 6.0f).toInt().coerceIn(0, 6)
+        } catch (_: Throwable) { 0 }
 
         tp.ring.add(tick, newPos)
 
         // metadata flags
-        tp.onGroundPacket = e.isOnGround
+        tp.onGroundPacket = e.onGround()
         tp.sprinting = e.isSprinting
-        tp.sneaking = e.isSneaking
-        tp.gliding = e.isGliding
+        tp.sneaking = e.isShiftKeyDown
+        tp.gliding = e.isFallFlying
         tp.usingItem = e.isUsingItem
         // Consumable (eat/drink) only — shields (BLOCK) and bows (BOW) also set usingItem but
         // are NOT the killaura-while-eating signal; gating KillAura consume on this avoids
@@ -328,8 +335,8 @@ object EntityTrackerManager {
         tp.isUsingConsumable = try {
             if (!e.isUsingItem) false
             else {
-                val main = e.mainHandItem.useAction
-                val off = e.offhandItem.useAction
+                val main = e.mainHandItem.useAnimation
+                val off = e.offhandItem.useAnimation
                 main == ItemUseAnimation.EAT || main == ItemUseAnimation.DRINK ||
                     off == ItemUseAnimation.EAT || off == ItemUseAnimation.DRINK
             }
@@ -341,23 +348,23 @@ object EntityTrackerManager {
         tp.isBlocking = try {
             if (!e.isUsingItem) false
             else {
-                val main = e.mainHandItem.useAction
-                val off = e.offhandItem.useAction
+                val main = e.mainHandItem.useAnimation
+                val off = e.offhandItem.useAnimation
                 main == ItemUseAnimation.BLOCK || off == ItemUseAnimation.BLOCK
             }
         } catch (_: Throwable) {
             false
         }
-        tp.riptide = e.isUsingRiptide
+        tp.riptide = e.isAutoSpinAttack
         tp.swimming = e.isSwimming
-        tp.inVehicle = e.hasVehicle()
-        tp.velocity = e.velocity
+        tp.inVehicle = e.isPassenger
+        tp.velocity = e.getDeltaMovement()
 
         // Per-tick entity-interaction-range sample (the Spear's extended reach lives here as an
         // attribute modifier on generic.entity_interaction_range). ReachCheck reads the max over the
         // recent window so a spear→sword swap between the swing and the (later) hurt tick keeps the
         // spear ceiling. Fail-open to 3.0 (vanilla default) on any read error.
-        try { tp.pushReach(tick, e.getEntityInteractionRange()) } catch (_: Throwable) { tp.pushReach(tick, 3.0) }
+        try { tp.pushReach(tick, e.entityInteractionRange()) } catch (_: Throwable) { tp.pushReach(tick, 3.0) }
 
         // teleport heuristic (the old public markTeleport() entrypoint had no callers — inference
         // never detects a teleport client-side, so this position-delta poll is the only teleport

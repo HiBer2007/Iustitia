@@ -61,7 +61,11 @@ object ChunkCapture {
 
         val chunks = ArrayList<ChunkSnapshot.ChunkRec>(Math.min((2 * r + 1) * (2 * r + 1), MAX_CHUNKS))
         var sections = 0
-        val mgr = world.chunkManager
+        // 26.3: `ClientLevel.chunkManager` is `getChunkSource()` → `ClientChunkCache`, whose 4-arg
+        // `getChunk(x, z, status, loadOrGenerate=false)` returns null for an unloaded chunk (same
+        // fail-open contract as before). Called as a method because `Level.chunkSource` is a
+        // protected field of the same name.
+        val mgr = world.getChunkSource()
 
         outer@ for (dx in -r..r) {
             for (dz in -r..r) {
@@ -95,7 +99,7 @@ object ChunkCapture {
      */
     internal fun captureChunkAt(world: net.minecraft.client.multiplayer.ClientLevel, chunkX: Int, chunkZ: Int):
             List<ChunkSnapshot.SectionRec>? = try {
-        val chunk = world.chunkManager.getChunk(chunkX, chunkZ, ChunkStatus.FULL, false) ?: return null
+        val chunk = world.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false) ?: return null
         captureChunk(chunk, chunkX, chunkZ)
     } catch (_: Throwable) { null }
 
@@ -107,16 +111,18 @@ object ChunkCapture {
      */
     internal fun captureChunk(chunk: net.minecraft.world.level.chunk.ChunkAccess, chunkX: Int, chunkZ: Int):
             List<ChunkSnapshot.SectionRec>? = try {
-        val sectionArray = chunk.getSectionArray()
+        // 26.3: `getSectionArray()` is `getSections()` and `getBottomY()` is `getMinY()` (the latter
+        // via LevelHeightAccessor); `LevelChunkSection.isEmpty()` is `hasOnlyAir()`.
+        val sectionArray = chunk.getSections()
         if (sectionArray.isEmpty()) return emptyList()
-        val bottomSectionCoord = chunk.getBottomY() shr 4
+        val bottomSectionCoord = chunk.getMinY() shr 4
         val out = ArrayList<ChunkSnapshot.SectionRec>(sectionArray.size)
         for (i in sectionArray.indices) {
             val sec = sectionArray[i] ?: continue
             // Cheap all-air skip: an empty section's palette container is the singleton air container,
             // so we never iterate its 4096 cells. (A fluid-only section is non-empty and gets captured;
             // its fluid blocks resolve to no BakedModel at mesh time → render nothing, harmless.)
-            if (sec.isEmpty()) continue
+            if (sec.hasOnlyAir()) continue
             val rec = captureSection(sec, bottomSectionCoord + i) ?: continue
             out.add(rec)
         }
@@ -173,9 +179,13 @@ object ChunkCapture {
      */
     internal fun stateKey(st: BlockState): String = try {
         val id = BuiltInRegistries.BLOCK.getId(st.block).toString()
-        val entries = st.entries
-        if (entries.isEmpty()) id
-        else id + "[" + entries.entries.joinToString(",") { "${it.key.name}=${it.value}" } + "]"
+        // 26.3: `BlockState.getEntries()` (an ImmutableMap) is `getValues()`, a Stream of
+        // `Property.Value` records. Iterated in property order, exactly like the map was, and
+        // formatted with the raw value's `toString()` as before so the palette strings stay
+        // byte-identical to the pre-port capture.
+        val values = st.values.toList()
+        if (values.isEmpty()) id
+        else id + "[" + values.joinToString(",") { "${it.property().getName()}=${it.value()}" } + "]"
     } catch (_: Throwable) {
         try { BuiltInRegistries.BLOCK.getId(st.block).toString() } catch (_: Throwable) { "minecraft:air" }
     }

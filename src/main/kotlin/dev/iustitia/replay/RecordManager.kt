@@ -266,7 +266,9 @@ object RecordManager {
 
         val map = try { ChunkRollingCapture.snapshotForSegment(RECORD_SEGMENT_ID) } catch (_: Throwable) { null }
         val dimKey = try {
-            net.minecraft.client.Minecraft.getInstance().level?.registryKey?.value?.toString() ?: "?"
+            // 26.3: Yarn's `Level.registryKey.getValue()` is `Level.dimension()` plus
+            // `ResourceKey.identifier()`; `Identifier.toString()` is still the "namespace:path" key.
+            net.minecraft.client.Minecraft.getInstance().level?.dimension()?.identifier()?.toString() ?: "?"
         } catch (_: Throwable) { "?" }
         if (map != null) try { map.dimension = dimKey } catch (_: Throwable) {}
 

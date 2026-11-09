@@ -28,7 +28,10 @@ object WorldQueries {
     fun isChunkLoaded(world: ClientLevel?, blockX: Int, blockZ: Int): Boolean {
         if (world == null) return false
         return try {
-            world.chunkManager.getChunk(blockX shr 4, blockZ shr 4, ChunkStatus.FULL, false) != null
+            // `getChunkSource()` (26.3) is the ClientChunkCache; its 4-arg getChunk returns null for
+            // an unloaded chunk exactly like the old `chunkManager` field did. Called as a method, not
+            // the property, because `Level.chunkSource` is a protected field of the same name.
+            world.getChunkSource().getChunk(blockX shr 4, blockZ shr 4, ChunkStatus.FULL, false) != null
         } catch (_: Throwable) {
             false
         }
@@ -47,6 +50,9 @@ object WorldQueries {
 
     /** True iff the block at (x,y,z) has a non-empty collision shape (a standable surface). */
     fun isSolidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
+        // `world` is also the BlockGetter the collision shape is resolved against (26.3 requires a
+        // non-null one), so null it out here rather than letting the nullable parameter through.
+        if (world == null) return false
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             val pos = BlockPos(x, y, z)
@@ -67,13 +73,15 @@ object WorldQueries {
      * stairs/slabs/fences) is not caught — an acceptable, rare trade for losing a large FP class.
      */
     fun isFullCubeSolidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
+        if (world == null) return false
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             if (state.isAir) return false
             val pos = BlockPos(x, y, z)
             val shape = state.getCollisionShape(world, pos)
             if (shape.isEmpty) return false
-            val boxes = shape.boundingBoxes
+            // 26.3 renamed `VoxelShape.getBoundingBoxes()` to `toAabbs()`; same list of AABB boxes.
+            val boxes = shape.toAabbs()
             if (boxes.size != 1) return false
             val b = boxes[0]
             b.minX <= 0.001 && b.minY <= 0.001 && b.minZ <= 0.001 &&
@@ -134,7 +142,7 @@ object WorldQueries {
     fun isClimbableAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
-            state.isIn(net.minecraft.tags.BlockTags.CLIMBABLE) ||
+            state.`is`(net.minecraft.tags.BlockTags.CLIMBABLE) ||
                 state.`is`(Blocks.VINE) || state.`is`(Blocks.LADDER) ||
                 state.`is`(Blocks.SCAFFOLDING)
         } catch (_: Throwable) {
@@ -178,7 +186,8 @@ object WorldQueries {
         return try {
             val player = Minecraft.getInstance().player ?: return false
             val box = AABB(x - 1.0, y - 1.5, z - 1.0, x + 1.0, y + 0.3, z + 1.0)
-            world.getOtherEntities(player, box) { it is Boat }.isNotEmpty()
+            // 26.3: `EntityGetter.getOtherEntities(entity, box, predicate)` is `getEntities(...)`.
+            world.getEntities(player, box) { it is Boat }.isNotEmpty()
         } catch (_: Throwable) {
             false
         }
@@ -251,26 +260,32 @@ object WorldQueries {
             if (!isChunkLoaded(world, Math.floor(from.x).toInt(), Math.floor(from.z).toInt()) ||
                 !isChunkLoaded(world, Math.floor(to.x).toInt(), Math.floor(to.z).toInt())
             ) return true
-            val shapeEntity: Entity? = try { Minecraft.getInstance().player } catch (_: Throwable) { null }
+            // 26.3 renamed the ClipContext enums (`ShapeType`→`Block`, `FluidHandling`→`Fluid`) and
+            // requires a non-null entity for the collision-spliterator context; a missing observer
+            // entity fails open (clear), exactly as the null-entity throw used to.
+            val shapeEntity: Entity = try { Minecraft.getInstance().player } catch (_: Throwable) { null }
+                ?: return true
             val ctx = ClipContext(
                 from, to,
-                ClipContext.ShapeType.COLLIDER,
-                ClipContext.FluidHandling.NONE,
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
                 shapeEntity,
             )
-            val hit = world.raycast(ctx)
+            // 26.3: `BlockGetter.raycast(ClipContext)` is `clip(ClipContext)`.
+            val hit = world.clip(ctx)
             // MISS (lands at `to`) = clear. A block hit short of `to` = blocked — UNLESS the
             // hit block is non-opaque (see-through), in which case the melee is legit.
             if (hit.type == HitResult.Type.MISS) return true
             if (hit is BlockHitResult) {
                 val state = world.getBlockState(hit.blockPos)
-                // `isOpaqueFullCube()` is the explicit "a full opaque cube" predicate the doc
-                // above describes (stone/planks block; glass/leaves/ice/fences/panes/bars stay
-                // see-through). `isOpaque()` happens to agree for stone but also reports true for
-                // see-through full-cube-shaped states, i.e. it is the looser, FP-prone form.
-                if (!state.isAir && !state.isOpaqueFullCube()) return true
+                // `isSolidRender()` is the 26.3 name of the explicit "a full opaque cube" predicate
+                // the doc above describes (stone/planks block; glass/leaves/ice/fences/panes/bars
+                // stay see-through). The looser `canOcclude()`/`isSolid()` forms report true for
+                // see-through full-cube-shaped states, i.e. they are the FP-prone variants.
+                if (!state.isAir && !state.isSolidRender()) return true
             }
-            hit.getPos().squaredDistanceTo(to) < 1.0E-6
+            // Method form: `HitResult.location` is a protected field of the same name.
+            hit.getLocation().distanceToSqr(to) < 1.0E-6
         } catch (_: Throwable) {
             true
         }

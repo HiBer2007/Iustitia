@@ -262,7 +262,9 @@ object ReplayBuffer {
         if (world != null) {
             if (newSegment) {
                 currentSegmentId++
-                segmentDimensions[currentSegmentId] = try { world.registryKey.value.toString() } catch (_: Throwable) { "?" }
+                // 26.3: Yarn's `Level.registryKey.getValue()` is `Level.dimension()` plus
+                // `ResourceKey.identifier()`; `Identifier.toString()` is still "namespace:path".
+                segmentDimensions[currentSegmentId] = try { world.dimension().identifier().toString() } catch (_: Throwable) { "?" }
                 beginSegmentCapture(currentSegmentId, px, pz, cfg)
             }
             // Roll the segment's world in a little each tick (bounded per-tick cost), so an export has
@@ -466,8 +468,8 @@ object ReplayBuffer {
         val hurtTime = try { (e?.hurtTime ?: 0).toByte() } catch (_: Throwable) { 0 }
         val health = try { e?.getHealth() ?: 20f } catch (_: Throwable) { 20f }
         val maxHealth = try { e?.getMaxHealth() ?: 20f } catch (_: Throwable) { 20f }
-        val bodyYaw = try { e?.bodyYaw ?: tp.yaw } catch (_: Throwable) { tp.yaw }
-        val headYaw = try { e?.headYaw ?: tp.yaw } catch (_: Throwable) { tp.yaw }
+        val bodyYaw = try { e?.yBodyRot ?: tp.yaw } catch (_: Throwable) { tp.yaw }
+        val headYaw = try { e?.yHeadRot ?: tp.yaw } catch (_: Throwable) { tp.yaw }
         val mainHand = idOf(e?.mainHandItem)
         val offHand = idOf(e?.offhandItem)
         val head = idOf(e?.getItemBySlot(EquipmentSlot.HEAD))
@@ -502,10 +504,9 @@ object ReplayBuffer {
         PlayerSnap(
             u.mostSignificantBits, u.leastSignificantBits,
             p.x.toFloat(), p.y.toFloat(), p.z.toFloat(),
-            p.yaw, p.pitch,
-            bodyYaw = p.bodyYaw, headYaw = p.headYaw,
-            swingTicks = try { p.handSwingTicks } catch (_: Throwable) { 0 },
-            pose = poseOfLiving(p), name = nm,
+            p.getYRot(), p.getXRot(),
+            bodyYaw = p.yBodyRot, headYaw = p.yHeadRot,
+            swingTicks = swingTicksOf(p), pose = poseOfLiving(p), name = nm,
             hurtTime = try { p.hurtTime.toByte() } catch (_: Throwable) { 0 },
             health = try { p.getHealth() } catch (_: Throwable) { 20f },
             maxHealth = try { p.getMaxHealth() } catch (_: Throwable) { 20f },
@@ -516,6 +517,21 @@ object ReplayBuffer {
             feet = idOf(p.getItemBySlot(EquipmentSlot.FEET)),
         )
     } catch (_: Throwable) { null }
+
+    /**
+     * Hand-swing phase in the 0..6 **tick** unit [PlayerSnap.swingTicks] stores (the value the
+     * renderer maps with `swingTicks / 6f`). 26.3 replaced the old public integer
+     * `LivingEntity.swingTime` (Yarn `handSwingTicks`) with
+     * [net.minecraft.world.entity.LivingEntity.getSwingAnimation], a normalised 0..1 progress over
+     * the swing's duration, so the tick phase is re-derived as `progress × 6` (one vanilla swing is
+     * 6 ticks — the same constant the render path already assumed). `isSwinging()` gates out the one
+     * tick a swing ends, where the progress reset to zero would otherwise read as a full swing.
+     * Fail-open: 0 (no swing).
+     */
+    private fun swingTicksOf(e: LivingEntity): Int = try {
+        if (!e.isSwinging) 0
+        else kotlin.math.round(e.getSwingAnimation(1.0f) * 6.0f).toInt().coerceIn(0, 6)
+    } catch (_: Throwable) { 0 }
 
     /**
      * Capture nearby non-player entities (v13+): living entities (mobs/animals) plus boats and
@@ -534,7 +550,9 @@ object ReplayBuffer {
         try {
             // Only types that can produce a snap are candidates, so the cap and the sort below are
             // spent on entities that will actually be captured (a dropped item / arrow never is).
-            for (entity in world.entities) {
+            // 26.3: `ClientLevel.getEntities()` is protected now; the public `entitiesForRendering()`
+            // is exactly `getEntities().getAll()`, i.e. the same "every loaded entity" iteration.
+            for (entity in world.entitiesForRendering()) {
                 if (entity === self) continue
                 if (entity is Player) continue
                 if (entity.isRemoved) continue
@@ -597,7 +615,9 @@ object ReplayBuffer {
             typeId,
             u.mostSignificantBits, u.leastSignificantBits,
             e.x.toFloat(), e.y.toFloat(), e.z.toFloat(),
-            e.bodyYaw, e.headYaw, e.pitch,
+            // 26.3 keeps the body/head rotations as the public `yBodyRot`/`yHeadRot` fields
+            // (Yarn `bodyYaw`/`headYaw`) and exposes `pitch` only as `getXRot()`.
+            e.yBodyRot, e.yHeadRot, e.getXRot(),
             poseOfLiving(e),
             (try { e.hurtTime } catch (_: Throwable) { 0 }).toByte(),
             try { e.getHealth() } catch (_: Throwable) { 20f },
@@ -620,17 +640,19 @@ object ReplayBuffer {
             typeId,
             u.mostSignificantBits, u.leastSignificantBits,
             e.x.toFloat(), e.y.toFloat(), e.z.toFloat(),
-            e.yaw, e.yaw, e.pitch, POSE_STAND,
+            e.getYRot(), e.getYRot(), e.getXRot(), POSE_STAND,
         )
     } catch (_: Throwable) { null }
 
     private fun poseOfLiving(e: LivingEntity): Byte = try {
         when {
-            e.isGliding -> POSE_GLIDE
+            // 26.3 names: `isFallFlying()` (gliding), `isVisuallyCrawling()` (crawling),
+            // `isPassenger()` (in a vehicle) and `isShiftKeyDown()` (sneaking input flag).
+            e.isFallFlying -> POSE_GLIDE
             e.isSwimming -> POSE_SWIM
-            e.isCrawling -> POSE_CRAWL
-            e.hasVehicle() -> POSE_SIT
-            e.isSneaking -> POSE_SNEAK
+            e.isVisuallyCrawling -> POSE_CRAWL
+            e.isPassenger -> POSE_SIT
+            e.isShiftKeyDown -> POSE_SNEAK
             else -> POSE_STAND
         }
     } catch (_: Throwable) { POSE_STAND }

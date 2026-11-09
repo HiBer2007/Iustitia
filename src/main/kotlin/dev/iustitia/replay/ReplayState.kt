@@ -881,8 +881,11 @@ object ReplayState {
             if (prev == mode) return
             val mc = net.minecraft.client.Minecraft.getInstance()
             if (mode == CameraMode.POV && prev != CameraMode.POV) {
-                if (savedPerspective == null) savedPerspective = mc.options.perspective
-                mc.options.setPerspective(net.minecraft.client.CameraType.FIRST_PERSON)
+                // 26.3: `Options.perspective` / `setPerspective` are `getCameraType()` /
+                // `setCameraType(CameraType)`; the enum constants are unchanged (FIRST_PERSON,
+                // THIRD_PERSON_BACK, THIRD_PERSON_FRONT).
+                if (savedPerspective == null) savedPerspective = mc.options.getCameraType()
+                mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON)
             } else if (mode != CameraMode.POV && prev == CameraMode.POV) {
                 restorePerspective()
             }
@@ -905,16 +908,17 @@ object ReplayState {
         try {
             val mc = net.minecraft.client.Minecraft.getInstance()
             val p = mc.player ?: return
-            val eye = p.getEyePos()
+            val eye = p.getEyePosition()
             // MC yaw convention: yaw 0 → +Z (south); horizontal forward = (-sin yaw, cos yaw).
-            val yawRad = p.yaw * (PI / 180.0)
+            // 26.3: `Entity.yaw`/`.pitch` are `getYRot()`/`getXRot()`.
+            val yawRad = p.getYRot() * (PI / 180.0)
             val fwdX = -sin(yawRad)
             val fwdZ = cos(yawRad)
             fcX = eye.x - fwdX * FREECAM_BACKOFF
             fcY = eye.y
             fcZ = eye.z - fwdZ * FREECAM_BACKOFF
-            fcYaw = p.yaw
-            fcPitch = p.pitch
+            fcYaw = p.getYRot()
+            fcPitch = p.getXRot()
             freecamActive = true
             prevFcX = fcX; prevFcY = fcY; prevFcZ = fcZ
             prevFcYaw = fcYaw; prevFcPitch = fcPitch
@@ -963,13 +967,16 @@ object ReplayState {
             }
             val mc = net.minecraft.client.Minecraft.getInstance()
             val opts = mc.options
-            val fwd = opts.forwardKey.isPressed
-            val back = opts.backKey.isPressed
-            val left = opts.leftKey.isPressed
-            val right = opts.rightKey.isPressed
-            val jump = opts.jumpKey.isPressed
-            val sneak = opts.sneakKey.isPressed
-            val sprint = try { opts.sprintKey.isPressed } catch (_: Throwable) { false }
+            // 26.3: `Options`' key fields keep their vanilla names — Yarn's forwardKey/backKey/
+            // leftKey/rightKey/jumpKey/sneakKey/sprintKey are keyUp/keyDown/keyLeft/keyRight/
+            // keyJump/keyShift/keySprint — and `KeyMapping.isPressed()` is `isDown()`.
+            val fwd = opts.keyUp.isDown
+            val back = opts.keyDown.isDown
+            val left = opts.keyLeft.isDown
+            val right = opts.keyRight.isDown
+            val jump = opts.keyJump.isDown
+            val sneak = opts.keyShift.isDown
+            val sprint = try { opts.keySprint.isDown } catch (_: Throwable) { false }
             val yawRad = fcYaw * (PI / 180.0)
             val fwdX = -sin(yawRad)
             val fwdZ = cos(yawRad)
@@ -1037,7 +1044,7 @@ object ReplayState {
     private fun restorePerspective() {
         try {
             val mc = net.minecraft.client.Minecraft.getInstance()
-            savedPerspective?.let { mc.options.setPerspective(it) }
+            savedPerspective?.let { mc.options.setCameraType(it) }
             savedPerspective = null
         } catch (_: Throwable) {}
     }

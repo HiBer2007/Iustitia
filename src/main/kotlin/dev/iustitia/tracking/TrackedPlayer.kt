@@ -109,9 +109,13 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
      *  arm the vertical arm). Default -10000 = never burst-launched. */
     @Volatile var burstLaunchTick: Int = -10000
 
-    /** Last client-ticked hand-swing phase for this player (vanilla `LivingEntity.handSwingTicks`,
-     *  0 when not mid-swing; advanced client-side in `OtherClientPlayerEntity.tickMovement`). Captured
-     *  into the replay/clip buffer so a replay ghost's arm swings when the player attacked/mined. */
+    /** Last client-ticked hand-swing phase for this player, in the historical "ticks into the swing"
+     *  unit (0 when not mid-swing; one vanilla swing is 6 ticks). 26.3 replaced the old integer
+     *  `LivingEntity.swingTime` with [net.minecraft.world.entity.LivingEntity.getSwingAnimation],
+     *  a normalised 0..1 progress, so the tracker re-derives the tick phase from it
+     *  (`progress * 6`) — the same 0..6 range every consumer was written against. Still advanced
+     *  client-side for other players (`RemotePlayer.tick` → `LivingEntity.baseTick`). Captured into
+     *  the replay/clip buffer so a replay ghost's arm swings when the player attacked/mined. */
     @Volatile var handSwingTicks: Int = 0
 
     /** Sticky "the server accepted a dig from this player and has not ended it" flag, from
@@ -140,7 +144,7 @@ class TrackedPlayer(val uuid: UUID, var entityId: Int, val joinTick: Int) {
      *  the -1 is unreachable rather than merely late, which is what lets the flag stay sticky
      *  everywhere else. */
     val digging: Boolean
-        get() = digActive && pos.squaredDistanceTo(digPos) <= DIG_ORPHAN_SQ
+        get() = digActive && pos.distanceToSqr(digPos) <= DIG_ORPHAN_SQ
 
     /** Tick of the last tick this player actually moved (|delta|² >= 0.0001). Idle-since-join
      *  players keep the default -10000, so [dev.iustitia.tracking.LagCombatCorrelator] never
