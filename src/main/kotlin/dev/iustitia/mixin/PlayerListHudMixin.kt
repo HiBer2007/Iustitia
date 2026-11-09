@@ -17,30 +17,36 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
  * at the player in-world. Just the tier glyph — no numeric confidence score on the tab (the score
  * is still available in `/ius hist`, `/ius session`, the snapshot, and the crosshair confidence HUD).
  *
- * Read-only on the tab render path: it rewrites the **return value** of `PlayerListHud.getPlayerName`
- * (`@At("RETURN")`, cancellable) — the single per-entry name source that both the row text and the
- * width measurement read (confirmed by decompiling `PlayerListHud.render` on yarn 1.21.11: it calls
- * `getPlayerName(entry)` then measures/draws that `Text`). No field mutation, no visibility/position
- * change. Whole body fail-open: any error leaves the original name untouched.
+ * Read-only on the tab render path: it rewrites the **return value** of `PlayerTabOverlay.
+ * getNameForDisplay` (`@At("RETURN")`, cancellable) — the single per-entry name source that both the
+ * row text and the width measurement read (confirmed by decompiling `PlayerTabOverlay.
+ * extractRenderState` on 26.3: it calls `getNameForDisplay(info)` per entry, then measures and draws
+ * that `Component`). No field mutation, no visibility/position change. Whole body fail-open: any error
+ * leaves the original name untouched.
  *
- * - **Local-player exclusion:** `ClientPlayerEntity` is also a `PlayerListEntry` in the list; we
- *   skip the local player by uuid so your own row isn't badged.
+ * - **Local-player exclusion:** the local player is also a `PlayerInfo` in the list; we skip the local
+ *   player by uuid so your own row isn't badged.
  * - **GREEN gating:** clean players are only badged when `nametagGreenEnabled` is on (same rule as
  *   the nametag / target-highlight — no `[+]` spam on every clean row by default).
- * - **Idempotent:** `getPlayerName` is called once per entry per render (row + width share the same
- *   returned `Text`); replacing the return value is idempotent — no `[X][X] Name` accumulation.
+ * - **Idempotent:** `getNameForDisplay` is called once per entry per render (row + width share the
+ *   same returned `Component`); replacing the return value is idempotent — no `[X][X] Name`
+ *   accumulation.
  * - **No burst-pulse:** the tab surface is secondary; the nametag carries the pulse. The badge here
  *   is the steady tier glyph (consistent with the in-world nametag).
  *
- * Runtime-caveat (same class as the nametag mixin was originally developed under): the inject POINT
- * in `getPlayerName` is build-confirmed (`@At("RETURN")` on a public method), so a build GREEN + a
- * successful mixin APPLY at launch is expected; if a future mapping rename breaks it, the mixin
- * apply failure shows at launch (not a crash — the tab just shows un-badged names, fail-open).
+ * ## 26.3 port
+ *
+ * `PlayerListHud` → `PlayerTabOverlay`; its per-entry name source `getPlayerName(PlayerInfo)` was
+ * renamed to `getNameForDisplay(PlayerInfo) -> Component` (verified with javap against
+ * `minecraft-merged-deobf-26.3.jar` — it is the only per-entry name accessor left on the class). The
+ * inject point is still a `@At("RETURN")` on that public method, so it stays build-confirmed; a
+ * future rename would fail mixin apply at launch (not crash — the tab simply shows un-badged names,
+ * fail-open).
  */
 @Mixin(PlayerTabOverlay::class)
 class PlayerListHudMixin {
 
-    @Inject(method = ["getPlayerName"], at = [At("RETURN")], cancellable = true)
+    @Inject(method = ["getNameForDisplay"], at = [At("RETURN")], cancellable = true)
     private fun iustitia_prefixTabName(entry: PlayerInfo, cir: CallbackInfoReturnable<Component>) {
         try {
             val cfg = ConfigManager.config

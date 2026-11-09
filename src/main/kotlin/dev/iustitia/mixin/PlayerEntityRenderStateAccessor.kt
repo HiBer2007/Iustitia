@@ -1,33 +1,40 @@
 package dev.iustitia.mixin
 
-import net.minecraft.client.renderer.entity.state.AvatarRenderState
+import net.minecraft.client.renderer.entity.state.EntityRenderState
 import net.minecraft.network.chat.Component
 import org.spongepowered.asm.mixin.Mixin
 import org.spongepowered.asm.mixin.gen.Accessor
 
 /**
- * Accessor for `PlayerEntityRenderState.playerName` — the **BELOW_NAME scoreboard score line**
- * (e.g. `"12 HP"`), populated by `AbstractClientPlayerEntity.getMannequinName()` only within ~10
- * blocks of the camera and only when the server registered a BELOW_NAME objective. It is NOT the
- * player's name (the name is `EntityRenderState.displayName`, accessed via [EntityRenderStateAccessor]).
+ * Accessor for the **BELOW_NAME scoreboard score line** on a player's render state (e.g. `"12 HP"`),
+ * populated by `Entity.belowNameDisplay()` in `EntityRenderer.extractNameTags` only within ~10 blocks
+ * of the camera and only when the server registered a BELOW_NAME objective. It is NOT the player's
+ * name (the name is `EntityRenderState.nameTag`, accessed via [EntityRenderStateAccessor]).
  *
- * Used by the nametag prefix fallback: when a server hides the vanilla name (`displayName == null`
- * via team `nametagVisibility` — e.g. mcpvp.club), the only label the vanilla player renderer still
- * draws is this score line, so we prefix it as a tier cue. See
+ * Used by the nametag prefix fallback: when a server hides the vanilla name (`nameTag == null` via
+ * team `nametagVisibility` — e.g. mcpvp.club), the only label the vanilla player renderer still draws
+ * is this score line, so we prefix it as a tier cue. See
  * [PlayerEntityRendererMixin.iustitia_prefixNametagAtDraw].
  *
- * Target note: `@Accessor` does NOT walk the superclass chain, and `playerName` is declared on
- * `PlayerEntityRenderState` itself (unlike `displayName`, which is declared on `EntityRenderState`
- * and so targeted by [EntityRenderStateAccessor] on that base class). A `PlayerEntityRenderState`
- * instance IS-A `PlayerEntityRenderState`, so casting a player render state to this accessor works
- * (the interface is added to the subclass). `playerName` is `@Nullable`, so the accessor uses `Text?`.
+ * ## 26.3 port — the mixin target moved to `EntityRenderState`
+ *
+ * Up to yarn 1.21.11 this was `@Mixin(PlayerEntityRenderState::class)` + `@Accessor("playerName")`,
+ * because the score line was declared on the player state subclass. In 26.3 the field was renamed to
+ * `scoreText` and **moved down to the base [EntityRenderState]** (it is extracted for every entity,
+ * not just players), while `AvatarRenderState` no longer declares any score field. `@Accessor` does not
+ * walk the superclass chain, so the mixin now targets the declaring class — exactly the pattern
+ * [EntityRenderStateAccessor] already used for the main nametag. The accessor *methods* keep their
+ * old names/signatures (`iustitia_getPlayerName` / `iustitia_setPlayerName`) so call sites stay
+ * source-compatible; an `AvatarRenderState` IS-A `EntityRenderState`, so the cast works.
+ *
+ * `scoreText` is `@Nullable`, so the accessor uses `Component?`.
  */
-@Mixin(AvatarRenderState::class)
+@Mixin(EntityRenderState::class)
 interface PlayerEntityRenderStateAccessor {
 
-    @Accessor("playerName")
+    @Accessor("scoreText")
     fun iustitia_getPlayerName(): Component?
 
-    @Accessor("playerName")
+    @Accessor("scoreText")
     fun iustitia_setPlayerName(value: Component?)
 }

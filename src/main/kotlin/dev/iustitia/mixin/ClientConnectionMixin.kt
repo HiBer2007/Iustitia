@@ -4,7 +4,8 @@ import dev.iustitia.replay.ReplayState
 import net.minecraft.network.Connection
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket
-import net.minecraft.network.protocol.game.ServerboundSwingPacket
+import net.minecraft.network.protocol.game.ServerboundAttackPacket
+import net.minecraft.network.protocol.game.ServerboundPunchPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
@@ -32,17 +33,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * S2C packets (the read-only [ClientPlayNetworkHandlerMixin] handles those), other players, or
  * detection.
  *
+ * ## Semantic change: `ServerboundSwingPacket` was split in 26.3
+ *
+ * 26.3 removed `ServerboundSwingPacket` and replaced it with two packets: `ServerboundAttackPacket`
+ * (`entityId` — an attack on a specific entity) and `ServerboundPunchPacket` (a no-target swing, i.e.
+ * swinging at air / a block). Both replace the single old swing packet for the replay-suppression
+ * purpose, so BOTH are in the suppress list below; omitting either would let the moderator punch or
+ * attack the live server while watching a clip.
+ *
  * ## `ClientCommandC2SPacket` — action-targeted suppression
  *
- * `ClientCommandC2SPacket` carries a `Mode` enum (yarn 1.21.11: `STOP_SLEEPING`, `START_SPRINTING`,
- * `STOP_SPRINTING`, `START_RIDING_JUMP`, `STOP_RIDING_JUMP`, `OPEN_INVENTORY`, `START_FALL_FLYING`).
- * The gameplay-state actions (sprint toggle, leave-bed, ride-jump, elytra deploy) are suppressed —
- * they mutate the moderator's live server state (sprint flag, sleep state, horse-jump charge, elytra
- * deployment) and are NOT spectator-adjacent. `OPEN_INVENTORY` passes through (inventory is
- * spectator-adjacent, allowed per the spec's "inventory passes through" rule). Note: the original
- * review finding posited a `SWAP_HANDS` action on this packet — that action does NOT exist in yarn
- * 1.21.11 (held-item swap is signaled elsewhere); the targeted suppression below covers the actual
- * gameplay-state actions on this packet type.
+ * `ClientCommandC2SPacket` carries an `Action` enum (26.3 renamed yarn's `Mode` to `Action`; values:
+ * `STOP_SLEEPING`, `START_SPRINTING`, `STOP_SPRINTING`, `START_RIDING_JUMP`, `STOP_RIDING_JUMP`,
+ * `OPEN_INVENTORY`, `START_FALL_FLYING`). The gameplay-state actions (sprint toggle, leave-bed,
+ * ride-jump, elytra deploy) are suppressed — they mutate the moderator's live server state (sprint
+ * flag, sleep state, horse-jump charge, elytra deployment) and are NOT spectator-adjacent.
+ * `OPEN_INVENTORY` passes through (inventory is spectator-adjacent, allowed per the spec's "inventory
+ * passes through" rule). Note: the original review finding posited a `SWAP_HANDS` action on this
+ * packet — that action does NOT exist (held-item swap is signaled elsewhere); the targeted
+ * suppression below covers the actual gameplay-state actions on this packet type.
  *
  * ## Gate + fail-open
  *
@@ -53,13 +62,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  *
  * ## Runtime-only-verifiable target
  *
- * `ClientConnection.send` was javap-verified against the 1.21.11 named jar and is overloaded with
- * three variants: `send(Packet)`, `send(Packet, ChannelFutureListener)`, and
- * `send(Packet, ChannelFutureListener, boolean)`. With `defaultRequire: 1` the name-only
+ * `Connection.send` is overloaded with three variants in 26.3 — `send(Packet)`,
+ * `send(Packet, ChannelFutureListener)`, `send(Packet, ChannelFutureListener, boolean)` (verified with
+ * javap against `minecraft-merged-deobf-26.3.jar`). With `defaultRequire: 1` the name-only
  * `method = ["send"]` would be ambiguous and fail at game launch, so the descriptor form
- * `method = ["send(Lnet/minecraft/network/packet/Packet;)V"]` is used to target the single-arg
- * public entry point that all gameplay code calls. The `ClientPlayNetworkHandler.sendPacket` fallback
- * was not needed. The build can't confirm mixin-apply; only a live client run can.
+ * `method = ["send(Lnet/minecraft/network/packet/Packet;)V"]` is used to target the single-arg public
+ * entry point that all gameplay code calls. The build can't confirm mixin-apply; only a live client
+ * run can.
  */
 @Mixin(Connection::class)
 class ClientConnectionMixin {
@@ -82,20 +91,24 @@ class ClientConnectionMixin {
      *  list (chat, commands, inventory, hotbar, settings, abilities, …) passes through.
      *
      *  `ClientCommandC2SPacket` is handled specially: only its gameplay-state actions (sprint toggle,
-     *  leave-bed, ride-jump, elytra deploy) are suppressed; `OPEN_INVENTORY` passes through. */
+     *  leave-bed, ride-jump, elytra deploy) are suppressed; `OPEN_INVENTORY` passes through.
+     *
+     *  26.3 split `ServerboundSwingPacket` into `ServerboundAttackPacket` (attacking an entity) and
+     *  `ServerboundPunchPacket` (swinging at air / a block) — both are suppressed. */
     private fun isGameplay(p: Packet<*>): Boolean {
         if (p is ServerboundPlayerCommandPacket) {
             // Suppress the gameplay-state actions; let OPEN_INVENTORY through (inventory is
-            // spectator-adjacent, allowed per spec). getMode() is javap-confirmed public on the
-            // 1.21.11 named jar.
-            return p.mode != ServerboundPlayerCommandPacket.Mode.OPEN_INVENTORY
+            // spectator-adjacent, allowed per spec). `getAction()` (yarn `getMode()`) is
+            // javap-confirmed public on the 26.3 jar.
+            return p.action != ServerboundPlayerCommandPacket.Action.OPEN_INVENTORY
         }
         return p is ServerboundMovePlayerPacket ||
             p is ServerboundPlayerActionPacket ||
             p is ServerboundUseItemOnPacket ||
             p is ServerboundUseItemPacket ||
             p is ServerboundInteractPacket ||
-            p is ServerboundSwingPacket ||
+            p is ServerboundAttackPacket ||
+            p is ServerboundPunchPacket ||
             p is ServerboundPlayerInputPacket
     }
 }
