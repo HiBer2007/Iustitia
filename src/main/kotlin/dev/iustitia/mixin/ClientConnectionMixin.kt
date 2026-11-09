@@ -66,14 +66,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
  * `send(Packet, ChannelFutureListener)`, `send(Packet, ChannelFutureListener, boolean)` (verified with
  * javap against `minecraft-merged-deobf-26.3.jar`). With `defaultRequire: 1` the name-only
  * `method = ["send"]` would be ambiguous and fail at game launch, so the descriptor form
- * `method = ["send(Lnet/minecraft/network/packet/Packet;)V"]` is used to target the single-arg public
- * entry point that all gameplay code calls. The build can't confirm mixin-apply; only a live client
- * run can.
+ * `method = ["send(Lnet/minecraft/network/protocol/Packet;)V"]` is used to target the single-arg
+ * public entry point that all gameplay code calls. The build can't confirm mixin-apply; only a live
+ * client run can.
  */
 @Mixin(Connection::class)
 class ClientConnectionMixin {
 
-    @Inject(method = ["send(Lnet/minecraft/network/packet/Packet;)V"], at = [At("HEAD")], cancellable = true)
+    @Inject(method = ["send(Lnet/minecraft/network/protocol/Packet;)V"], at = [At("HEAD")], cancellable = true)
     private fun iustitia_suppressGameplayPackets(packet: Packet<*>, ci: CallbackInfo) {
         try {
             // Legacy playclip (v1.1.0) skips suppression so the player can act on the live server
