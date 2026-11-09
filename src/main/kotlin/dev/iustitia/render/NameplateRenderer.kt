@@ -117,9 +117,9 @@ object NameplateRenderer {
                     val color: Int
                     val glyph: String
                     when (tier) {
-                        // Red already gets the full-plate highlight below, so the marker only needs
-                        // the warning glyph (no second 'X').
-                        FlagHistory.Tier.RED -> { color = RED; glyph = "!" }
+                        // Tier glyphs match the nametag prefix / tab badge: + green, ! yellow, X red.
+                        // Red additionally gets the full-plate highlight drawn below.
+                        FlagHistory.Tier.RED -> { color = RED; glyph = "X" }
                         FlagHistory.Tier.YELLOW -> { color = YELLOW; glyph = "!" }
                         FlagHistory.Tier.GREEN -> { color = GREEN; glyph = "+" }
                     }
