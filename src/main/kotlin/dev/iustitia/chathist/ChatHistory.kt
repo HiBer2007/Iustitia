@@ -101,7 +101,7 @@ object ChatHistory {
 
     /** The current server-address key (`currentServerEntry?.address` ?: `"singleplayer"`). Fail-open. */
     private fun serverKey(): String = try {
-        Minecraft.getInstance().currentServerEntry?.address?.takeIf { it.isNotBlank() } ?: "singleplayer"
+        Minecraft.getInstance().getCurrentServer()?.ip?.takeIf { it.isNotBlank() } ?: "singleplayer"
     } catch (_: Throwable) { "singleplayer" }
 
     private fun sanitize(address: String): String = address.replace(Regex("[^A-Za-z0-9_.-]"), "_")

@@ -39,7 +39,7 @@ import java.util.UUID
  * The tab list — not the render-distance [dev.iustitia.tracking.EntityTrackerManager] — is the
  * "other players" set, because lobby chat includes players not in render distance. When a tab-list
  * name is found in the region, it's the username and resolves a real UUID via
- * `getPlayerListEntry(name).profile.id`. The local player is excluded by UUID with a name-match
+ * `getPlayerInfo(name).profile.id`. The local player is excluded by UUID with a name-match
  * fallback.
  *
  * When NO tab-list name is found in the region, the line is dropped by default. With
@@ -129,7 +129,7 @@ object DecoratedChatParser {
      * name for [uuid]; falls back to [fallback]. Fail-open (returns [fallback]).
      */
     fun resolveCleanName(uuid: UUID, fallback: String): String = try {
-        Minecraft.getInstance().getConnection()?.getPlayerListEntry(uuid)?.profile?.name
+        Minecraft.getInstance().getConnection()?.getPlayerInfo(uuid)?.profile?.name
             ?.takeIf { it.isNotBlank() } ?: fallback
     } catch (_: Throwable) { fallback }
 
@@ -200,7 +200,7 @@ object DecoratedChatParser {
 
     private fun tabNames(): List<String> = try {
         val h = Minecraft.getInstance().getConnection() ?: return emptyList()
-        h.playerList.mapNotNull { it.profile?.name }.filter { it.isNotBlank() }
+        h.listedOnlinePlayers.mapNotNull { it.profile?.name }.filter { it.isNotBlank() }
     } catch (_: Throwable) { emptyList() }
 
     private fun localName(): String? = try {
@@ -215,7 +215,7 @@ object DecoratedChatParser {
     private fun resolveByName(name: String, permissive: Boolean): UUID? {
         val mc = Minecraft.getInstance()
         val local = try { mc.player?.uuid } catch (_: Throwable) { null }
-        val entry = try { mc.getConnection()?.getCaseInsensitivePlayerInfo(name) } catch (_: Throwable) { null }
+        val entry = try { mc.getConnection()?.getPlayerInfoIgnoreCase(name) } catch (_: Throwable) { null }
         val uuid = entry?.profile?.id
         if (uuid != null) {
             if (uuid == local) return null

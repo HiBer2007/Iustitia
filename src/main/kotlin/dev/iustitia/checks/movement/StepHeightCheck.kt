@@ -80,7 +80,7 @@ class StepHeightCheck : Check() {
      *  Reads the live entity's status effect; fail-open to -1 (→ 0.42 ceiling) on any error. */
     private fun jumpImpulseCeiling(tp: TrackedPlayer): Double {
         val amp = try {
-            tp.entity?.getStatusEffect(MobEffects.JUMP_BOOST)?.amplifier ?: -1
+            tp.entity?.getEffect(MobEffects.JUMP_BOOST)?.amplifier ?: -1
         } catch (_: Throwable) { -1 }
         return 0.42 + 0.1 * (amp + 1)
     }

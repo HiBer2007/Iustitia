@@ -51,7 +51,7 @@ class BacktrackCheck : Check() {
             // victim hitbox is pose-aware (sneak → 0.6×1.5, glide/swim/riptide → 0.6×0.6).
             val vh = HitboxSizes.forPose(victim)
             // current position out of reach?
-            val curBox = AABB.around(victim.pos.x, victim.pos.y, victim.pos.z, vh.width, vh.height).expand(0.0005)
+            val curBox = AABB(victim.pos.x - vh.width / 2, victim.pos.y, victim.pos.z - vh.width / 2, victim.pos.x + vh.width / 2, victim.pos.y + vh.height, victim.pos.z + vh.width / 2).expand(0.0005)
             val curDist = sqrt(curBox.closestPointSqDistance(eye.x, eye.y, eye.z))
             if (curDist <= reach + margin) {
                 // current pos already in reach — a normal hit, the window's counter-example
@@ -92,7 +92,7 @@ class BacktrackCheck : Check() {
             }
             // any recent position in reach?
             for (p in victim.ring.getPositions(4, ev.tick)) {
-                val oldBox = AABB.around(p.x, p.y, p.z, vh.width, vh.height).expand(0.0005)
+                val oldBox = AABB(p.x - vh.width / 2, p.y, p.z - vh.width / 2, p.x + vh.width / 2, p.y + vh.height, p.z + vh.width / 2).expand(0.0005)
                 val oldDist = sqrt(oldBox.closestPointSqDistance(eye.x, eye.y, eye.z))
                 if (oldDist <= reach + margin) {
                     val ctx = contextOf(attacker.uuid)

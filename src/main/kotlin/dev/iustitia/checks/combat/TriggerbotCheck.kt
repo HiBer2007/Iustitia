@@ -102,7 +102,7 @@ class TriggerbotCheck : Check() {
 
             val eye = tp.pos.add(0.0, tp.eyeHeight(), 0.0)
             val look = Vectors.lookVector(tp.yaw.toDouble(), tp.pitch.toDouble())
-            val end = eye.add(look.multiply(LOOK_REACH + 1.0))
+            val end = eye.add(look.scale(LOOK_REACH + 1.0))
             val margin = 0.0005 + if (ProtocolDetector.is1_8OrLess) 0.1 else 0.0
 
             val nearby = HashSet<UUID>()
@@ -122,7 +122,7 @@ class TriggerbotCheck : Check() {
                 // while still above the real (shorter) hitbox → rising edge early → false
                 // sub-reaction reading on a legit player sneaking under the crosshair.
                 val vh = HitboxSizes.forPose(victim)
-                val box = AABB.around(victim.pos.x, victim.pos.y, victim.pos.z, vh.width, vh.height).expand(margin)
+                val box = AABB(victim.pos.x - vh.width / 2, victim.pos.y, victim.pos.z - vh.width / 2, victim.pos.x + vh.width / 2, victim.pos.y + vh.height, victim.pos.z + vh.width / 2).expand(margin)
                 val onNow = RayAABB.calculateIntercept(box, eye, end) != null
                 val prev = ctx.onHitbox[victim.uuid] ?: false
                 if (onNow && !prev) {

@@ -89,7 +89,7 @@ class ReachCheck : Check() {
             // over the last REACH_LAG_WINDOW ticks (lag-comp, mirroring the victim ring at :96) so
             // the spear's 4.5 ceiling covers the legitimate swing-tick hit.
             val liveReach = try {
-                attacker.entity?.getEntityInteractionRange() ?: cfg.threshold
+                attacker.entity?.entityInteractionRange() ?: cfg.threshold
             } catch (_: Throwable) { cfg.threshold }
             val maxReach = maxOf(liveReach, attacker.reachMaxSince(ev.tick - REACH_LAG_WINDOW))
 
@@ -130,7 +130,7 @@ class ReachCheck : Check() {
             if (motionlessPair(attacker, victim, ev.tick)) {
                 var closest = Double.MAX_VALUE
                 for (vp in positions) {
-                    val box = AABB.around(vp.x, vp.y, vp.z, vh.width, vh.height)
+                    val box = AABB(vp.x - vh.width / 2, vp.y, vp.z - vh.width / 2, vp.x + vh.width / 2, vp.y + vh.height, vp.z + vh.width / 2)
                     val d = sqrt(box.closestPointSqDistance(eye.x, eye.y, eye.z))
                     if (d < closest) closest = d
                 }
@@ -157,9 +157,9 @@ class ReachCheck : Check() {
             var minDist = Double.MAX_VALUE
             var anyHit = false
             for (vp in positions) {
-                val box = AABB.around(vp.x, vp.y, vp.z, vh.width, vh.height).expand(margin)
+                val box = AABB(vp.x - vh.width / 2, vp.y, vp.z - vh.width / 2, vp.x + vh.width / 2, vp.y + vh.height, vp.z + vh.width / 2).expand(margin)
                 for (look in looks) {
-                    val end = eye.add(look.multiply(maxReach + 3.0))
+                    val end = eye.add(look.scale(maxReach + 3.0))
                     val hit = RayAABB.calculateIntercept(box, eye, end) ?: continue
                     anyHit = true
                     val d = eye.distanceTo(hit)
@@ -200,7 +200,7 @@ class ReachCheck : Check() {
                     var minAngle = Double.MAX_VALUE
                     if (dirLen > 0.01) {
                         for (look in looks) {
-                            val cosA = look.dotProduct(dir) / (look.length() * dirLen)
+                            val cosA = look.dot(dir) / (look.length() * dirLen)
                             val angle = Math.toDegrees(acos(maxOf(-1.0, minOf(1.0, cosA))))
                             if (angle < minAngle) minAngle = angle
                         }

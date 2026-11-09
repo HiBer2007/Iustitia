@@ -50,7 +50,7 @@ object Iustitia {
 
     /** True iff the current thread is the client main thread (== render thread on 1.21.11). */
     fun onClientThread(): Boolean = try {
-        Minecraft.getInstance().isOnThread
+        Minecraft.getInstance().isSameThread()
     } catch (_: Throwable) {
         // fail-open: when we can't tell (headless unit tests, very early boot), behave as
         // if on-thread so callers dispatch inline — no behavior change vs pre-queue.
@@ -407,7 +407,7 @@ object Iustitia {
     /** The other player under the crosshair (uuid → name), or null. Fail-open. */
     private fun crosshairTarget(): Pair<UUID, String>? = try {
         val client = Minecraft.getInstance()
-        val hit = client.crosshairTarget
+        val hit = client.hitResult
         val ent = (hit as? net.minecraft.world.phys.EntityHitResult)?.entity
         val other = ent as? net.minecraft.client.player.RemotePlayer
         if (other != null) other.uuid to (other.name.string.ifEmpty { other.uuid.toString().take(8) }) else null
@@ -415,7 +415,7 @@ object Iustitia {
 
     /** One chat line to the local player (fail-open). */
     private fun chat(mc: Minecraft, line: String) {
-        try { mc.execute { try { mc.player?.sendMessage(Component.literal(line), false) } catch (_: Throwable) {} } }
+        try { mc.execute { try { mc.player?.sendSystemMessage(Component.literal(line)) } catch (_: Throwable) {} } }
         catch (_: Throwable) {}
     }
 

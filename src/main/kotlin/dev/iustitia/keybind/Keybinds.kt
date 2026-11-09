@@ -1,11 +1,10 @@
 package dev.iustitia.keybind
 
 import dev.iustitia.i18n.L10n
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
 import net.minecraft.client.KeyMapping
 import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.resources.Identifier
-import org.lwjgl.glfw.GLFW
 
 /**
  * The Iustitia keybind registry (Phase 2 #14). Each bind is a vanilla [KeyBinding] in the
@@ -30,9 +29,12 @@ import org.lwjgl.glfw.GLFW
  */
 object Keybinds {
 
+    /** key.keyboard.keypad.subtract — on 26.3 (SDL) this has no InputConstants.KEY_* symbol. */
+    private const val KEYPAD_SUBTRACT = 86
+
     // Create once during client registration, not object initialization: duplicate IDs are rejected.
     private val category: KeyMapping.Category by lazy {
-        KeyMapping.Category.create(Identifier.of("iustitia", "keybinds"))
+        KeyMapping.Category.register(Identifier.fromNamespaceAndPath("iustitia", "keybinds"))
     }
 
     /** A registered bind: metadata always present; [keyBinding] is null until [register] succeeds.
@@ -56,19 +58,19 @@ object Keybinds {
     }
 
     private val binds: List<Bind> = listOf(
-        Bind("snapshot", GLFW.GLFW_KEY_K, null),
-        Bind("transcript", GLFW.GLFW_KEY_J, null),
-        Bind("session", GLFW.GLFW_KEY_HOME, null),
-        Bind("keybinds", GLFW.GLFW_KEY_END, null),
-        Bind("config", GLFW.GLFW_KEY_F8, null),
-        Bind("note", GLFW.GLFW_KEY_N, null),
-        Bind("compact", GLFW.GLFW_KEY_F7, null),
-        Bind("watch", GLFW.GLFW_KEY_F9, null),
-        Bind("replayPause", GLFW.GLFW_KEY_KP_5, null),
-        Bind("replaySeekFwd", GLFW.GLFW_KEY_KP_ADD, null),
-        Bind("replaySeekBack", GLFW.GLFW_KEY_KP_SUBTRACT, null),
-        Bind("replayExit", GLFW.GLFW_KEY_KP_0, null),
-        Bind("replayToggle", GLFW.GLFW_KEY_KP_MULTIPLY, null),
+        Bind("snapshot", InputConstants.KEY_K, null),
+        Bind("transcript", InputConstants.KEY_J, null),
+        Bind("session", InputConstants.KEY_HOME, null),
+        Bind("keybinds", InputConstants.KEY_END, null),
+        Bind("config", InputConstants.KEY_F8, null),
+        Bind("note", InputConstants.KEY_N, null),
+        Bind("compact", InputConstants.KEY_F7, null),
+        Bind("watch", InputConstants.KEY_F9, null),
+        Bind("replayPause", InputConstants.KEY_NUMPAD5, null),
+        Bind("replaySeekFwd", InputConstants.KEY_ADD, null),
+        Bind("replaySeekBack", KEYPAD_SUBTRACT, null),
+        Bind("replayExit", InputConstants.KEY_NUMPAD0, null),
+        Bind("replayToggle", InputConstants.KEY_MULTIPLY, null),
     )
 
     /** All registered binds (read by [dev.iustitia.ui.KeybindHubScreen]). Order = display order. */
@@ -83,8 +85,8 @@ object Keybinds {
         val category = this.category
         for (b in binds) {
             try {
-                val kb = KeyMapping("key.iustitia.${b.id}", InputConstants.Type.KEYSYM, b.defaultKey, category)
-                KeyBindingHelper.registerKeyBinding(kb)
+                val kb = KeyMapping("key.iustitia.${b.id}", InputConstants.Type.KEYBOARD, b.defaultKey, category)
+                KeyMappingHelper.registerKeyMapping(kb)
                 b.keyBinding = kb
             } catch (_: Throwable) {
                 // fail-open: leave keyBinding null; hub/poll handle it
@@ -102,7 +104,7 @@ object Keybinds {
             for (b in binds) {
                 try {
                     val kb = b.keyBinding ?: continue
-                    if (kb.wasPressed()) dev.iustitia.Iustitia.onKeybind(b.id)
+                    if (kb.consumeClick()) dev.iustitia.Iustitia.onKeybind(b.id)
                 } catch (_: Throwable) {}
             }
         } catch (_: Throwable) {}

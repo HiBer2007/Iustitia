@@ -153,7 +153,7 @@ object AlertManager {
                     AlertFormatter.formatBatch(batch.name, parts, worstBand, windowSec, lagging, cfg.compactMode, uuid)
                 }
                 val client = Minecraft.getInstance()
-                client.execute { client.gui.hud?.chatHud?.addMessage(text) }
+                client.execute { client.gui.hud?.chat?.addClientSystemMessage(text) }
 
                 // 6. audio cue (gated by the same mute/preset rules — a muted/preset-dropped alert
                 //    is silent too).
@@ -197,9 +197,9 @@ object AlertManager {
                 try {
                     val player = client.player ?: return@execute
                     when (tier) {
-                        FlagHistory.Tier.RED -> player.playSound(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), vol, 0.8f)
-                        FlagHistory.Tier.YELLOW -> player.playSound(SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), vol, 1.2f)
-                        FlagHistory.Tier.GREEN -> player.playSound(SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), vol * 0.6f, 1.0f)
+                        FlagHistory.Tier.RED -> player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), vol, 0.8f)
+                        FlagHistory.Tier.YELLOW -> player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), vol, 1.2f)
+                        FlagHistory.Tier.GREEN -> player.playSound(SoundEvents.NOTE_BLOCK_HARP.value(), vol * 0.6f, 1.0f)
                     }
                 } catch (_: Throwable) {}
             }

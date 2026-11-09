@@ -95,9 +95,9 @@ object Snapshot {
             }
             client.execute {
                 try {
-                    client.gui.hud?.chatHud?.addMessage(Component.literal(summary))
+                    client.gui.hud?.chat?.addClientSystemMessage(Component.literal(summary))
                     try { client.keyboardHandler.setClipboard(summary) } catch (_: Throwable) {}
-                    if (fileFailed) client.gui.hud?.chatHud?.addMessage(Component.literal(
+                    if (fileFailed) client.gui.hud?.chat?.addClientSystemMessage(Component.literal(
                         L10n.s("iustitia.session.snapshotFileFailed")))
                 } catch (_: Throwable) {}
             }
@@ -142,13 +142,13 @@ object Snapshot {
                 return
             }
             // No target → immediate local-POV capture (vanilla F2 angle) on the render thread.
-            val fb: RenderTarget? = client.framebuffer
+            val fb: RenderTarget? = client.gameRenderer.mainRenderTarget()
             if (fb == null) return
             client.execute {
                 try {
-                    Screenshot.saveScreenshot(
+                    Screenshot.grab(
                         dir, filename, fb, 1,
-                        Consumer { msg -> try { client.gui.hud?.chatHud?.addMessage(msg) } catch (_: Throwable) {} }
+                        Consumer { msg -> try { client.gui.hud?.chat?.addClientSystemMessage(msg) } catch (_: Throwable) {} }
                     )
                 } catch (_: Throwable) {}
             }

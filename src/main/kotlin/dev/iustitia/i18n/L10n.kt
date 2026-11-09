@@ -24,7 +24,7 @@ object L10n {
     fun s(key: String, vararg args: Any?): String = try {
         // `Language.get` returns the key itself when the entry is missing — the sentinel that
         // CheckInfo / FeatureInfo / Keybinds test for to fall back to their English text.
-        formatEntry(Language.getInstance().get(key), args)
+        formatEntry(Language.getInstance().getOrDefault(key), args)
     } catch (_: Throwable) {
         key
     }
