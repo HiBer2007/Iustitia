@@ -8,11 +8,9 @@ import dev.iustitia.history.FlagHistory
 import dev.iustitia.i18n.L10n
 import dev.iustitia.persistence.PersistenceManager
 import net.minecraft.client.Minecraft
-import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Screenshot
 import net.minecraft.network.chat.Component
 import java.util.UUID
-import java.util.function.Consumer
 
 /**
  * The one-click evidence snapshot (Phase 2 #3, non-render half): posts a one-line summary to chat,
@@ -119,7 +117,7 @@ object Snapshot {
      * the next frame by [dev.iustitia.render.SelfieRenderer]. With no target it falls back to an
      * immediate local-POV capture (vanilla F2 angle) on the render thread.
      *
-     * The save's [Consumer] callback receives the "saved <file>" / error [Text]; we echo it to chat
+     * The save echoes vanilla's "saved <file>" / error message to chat
      * so the user gets a clickable file link. Fail-open: any GL/IO/camera failure is swallowed —
      * the chat, clipboard, and `.json` summary from [capture] still land. A build cannot verify the
      * framebuffer/camera behavior (GL-state-dependent); runtime-test only. No-op when persistence
@@ -142,16 +140,41 @@ object Snapshot {
                 return
             }
             // No target → immediate local-POV capture (vanilla F2 angle) on the render thread.
-            val fb: RenderTarget? = client.gameRenderer.mainRenderTarget()
-            if (fb == null) return
+            // 26.3: the colour attachment is copied by `Screenshot.takeScreenshot` and the PNG is
+            // written here (the old `Screenshot.grab(dir, name, target, …)` helper is gone).
+            val target = client.gameRenderer.mainRenderTarget()
             client.execute {
                 try {
-                    Screenshot.grab(
-                        dir, filename, fb, 1,
-                        Consumer { msg -> try { client.gui.hud?.chat?.addClientSystemMessage(msg) } catch (_: Throwable) {} }
-                    )
+                    Screenshot.takeScreenshot(target, 1) { image -> saveImage(client, dir, filename, image) }
                 } catch (_: Throwable) {}
             }
         } catch (_: Throwable) {}
+    }
+
+    /** Write a captured frame to `snapshots/<tick>_<name>.png` on the IO pool and echo the vanilla
+     *  "saved / error" message (with a clickable file link) to chat. Mirrors
+     *  [dev.iustitia.render.SelfieRenderer]'s save path. Fail-open. */
+    private fun saveImage(client: Minecraft, dir: java.io.File, filename: String, image: com.mojang.blaze3d.platform.NativeImage) {
+        try {
+            net.minecraft.util.Util.ioPool().execute {
+                val file = java.io.File(dir, filename)
+                try {
+                    image.use { it.writeToFile(file) }
+                    val link = Component.literal(file.name)
+                        .withStyle(net.minecraft.ChatFormatting.UNDERLINE)
+                        .withStyle { style ->
+                            style.withClickEvent(net.minecraft.network.chat.ClickEvent.OpenFile(file.absoluteFile))
+                        }
+                    client.gui.hud.chat.addClientSystemMessage(Component.translatable("screenshot.success", link))
+                } catch (t: Throwable) {
+                    try { image.close() } catch (_: Throwable) {}
+                    client.gui.hud.chat.addClientSystemMessage(
+                        Component.translatable("screenshot.failure", t.message ?: "write failed"),
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            try { image.close() } catch (_: Throwable) {}
+        }
     }
 }

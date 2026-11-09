@@ -84,6 +84,12 @@ class IustitiaClientMod : ClientModInitializer {
         // iustitia.mixins.json) suppresses the real players during a hide-live replay. Render-only.
         try { dev.iustitia.render.ReplayRenderer.register() } catch (_: Throwable) {}
 
+        // 26.3 port additions: a tier-colored foot trail under every tracked player (green included —
+        // a not-yet-flagged player is the one worth watching) and a floating nameplate above every
+        // head that keeps yellow/red visible while the player sneaks, with a glowing red tier.
+        try { dev.iustitia.render.FootTrailRenderer.register() } catch (_: Throwable) {}
+        try { dev.iustitia.render.NameplateRenderer.register() } catch (_: Throwable) {}
+
         // Full check registry — combat (16) + movement/rotation/packet (20).
         Iustitia.register(ReachCheck())
         Iustitia.register(MultiTargetCheck())
