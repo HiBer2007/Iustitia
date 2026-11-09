@@ -31,22 +31,27 @@ import net.minecraft.world.phys.shapes.Shapes
  *
  * ## Rendering
  *
- * Registered on [LevelRenderEvents.COLLECT_SUBMITS]. The pose there is world-origin (unit matrix),
- * so the renderer translates by `-cameraPos` once and draws in world coordinates. Everything is
- * depth-tested (`RenderTypes.lines()`), so a trail behind a wall is occluded — no wallhack. Pure
- * render: adds no detection, sends no packets, and every step is fail-open.
+ * Registered on [LevelRenderEvents.COLLECT_SUBMITS]. Each sample is submitted under its own
+ * camera-relative translate with a small local cube, because the collector stores the pose and
+ * transforms the shape vertices later. Translucent lines are used so the per-sample alpha actually
+ * blends (a plain line layer ignores alpha and the fade would read as a pop). Everything is
+ * depth-tested, so a trail behind a wall is occluded — no wallhack. Pure render: adds no detection,
+ * sends no packets, and every step is fail-open.
  */
 object FootTrailRenderer {
 
-    /** Half-size of one trail square, in blocks. */
-    private const val HALF = 0.16
+    /** Half-size of one trail cube, in blocks (edge ≈ 0.11 — a third of the first cut's 0.32). */
+    private const val HALF = 0.055
 
-    /** Vertical lift so the square sits just above the block face instead of z-fighting it. */
-    private const val LIFT = 0.03
+    /** Vertical lift so the cube sits just above the block face instead of z-fighting it. */
+    private const val LIFT = 0.02
 
-    /** Alpha of the newest / oldest sample (ARGB high byte). */
-    private const val ALPHA_NEW = 0xC0
-    private const val ALPHA_OLD = 0x28
+    /**
+     * The cube starts at full opacity the tick it is recorded and fades linearly to zero over the
+     * trail's whole lifetime (`footTrailTicks`), so it never pops out — the total on-screen time is
+     * unchanged; only the alpha ramp is different.
+     */
+    private const val ALPHA_NEW = 0xFF
 
     private const val GREEN = 0xFF55FF55.toInt()
     private const val YELLOW = 0xFFFFEE55.toInt()
@@ -77,7 +82,9 @@ object FootTrailRenderer {
         val pose = ctx.poseStack()
         val camPos = ctx.levelState().cameraRenderState.pos
         val now = Iustitia.tickCounter
-        val lines = RenderTypes.lines()
+        // Translucent lines: alpha has to actually blend, otherwise every cube is either fully
+        // drawn or absent and the fade reads as a pop. Depth testing is unchanged.
+        val lines = RenderTypes.linesTranslucent()
 
         for (tp in players) {
             try {
@@ -92,16 +99,22 @@ object FootTrailRenderer {
                 tp.ring.forEachRecent(ticks, now) { x, y, z ->
                     // 26.3: `submitShapeOutline` takes the shape in the pose's LOCAL space (the
                     // collector stores the pose and transforms the shape vertices later), so each
-                    // square is submitted under its own camera-relative translate. Translating the
+                    // cube is submitted under its own camera-relative translate. Translating the
                     // shared pose by -camPos and passing world coordinates instead double-applies the
                     // camera offset and puts every square off-screen — that was the "trail never
                     // shows" bug.
                     pose.pushPose()
                     try {
                         pose.translate(x - camPos.x, y - camPos.y, z - camPos.z)
-                        // Newest sample (index 0) is the most opaque; the tail fades out.
+                        // Newest sample (index 0) is fully opaque; it fades linearly to zero at the
+                        // end of its lifetime (the sample drops out of the ring at that same tick),
+                        // so a cube is already dimming on the frame it first appears.
                         val t = if (ticks <= 1) 0f else (index.toFloat() / (ticks - 1)).coerceIn(0f, 1f)
-                        val alpha = (ALPHA_NEW + (ALPHA_OLD - ALPHA_NEW) * t).toInt().coerceIn(0, 255)
+                        val alpha = (ALPHA_NEW.toFloat() * (1f - t)).toInt().coerceIn(0, 255)
+                        if (alpha <= 0) {
+                            index++
+                            return@forEachRecent
+                        }
                         val color = (alpha shl 24) or (rgb and 0x00FFFFFF)
                         // A real little cube at the feet (not a flat square) so it reads while
                         // looking down at a walking player.
