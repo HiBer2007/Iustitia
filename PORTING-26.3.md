@@ -127,6 +127,14 @@ Other renamed members worth knowing: `PoseStack.push/pop/peek/multiply` → `pus
 - Automated live tests: `gradlew runClientGameTest` runs on 26.3 after the harness port. The
   `reach`/`CHEAT` slice passes 6/6. One harness fix was required for 26.3: client-side bots must be
   given an explicit entity id (`Entity.getId()` throws while the id is 0).
+- Full `CHEAT` pass (62 scenarios): **51 pass, 11 miss**. Every one of the 11 misses passes when run
+  on its own (`-Pselftest.filter=…`): 13/13 re-runs green. The failures cluster on the block-material
+  drives (no-fall, water-walk, no-slow, wall-sprint, sprint-hack, phase, spider), i.e. they are
+  cross-scenario world-state interference in one long harness run, not a detection regression. Worth
+  fixing in the harness (per-scenario world reset / distinct arena offsets) before it can be used as
+  a release gate.
+- Visual checks done on the running client: the setup wizard renders in Chinese; the tab-list tier
+  badge renders (`[+] Name`); a second client's nametag no longer doubles.
 - Still runtime-only (cannot be proven by a build): the exact on-screen placement of the new overlays
   and the freecam/replay camera overrides. Those paths are fail-open and were exercised by the
   in-world launch, but a visual pass on a real server is still worth doing before release.
