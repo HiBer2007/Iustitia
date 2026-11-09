@@ -29,7 +29,7 @@ import dev.iustitia.ui.SessionScreen
 import dev.iustitia.ui.SetupWizardScreen
 import dev.iustitia.ui.ChatHistPanelScreen
 import dev.iustitia.ui.TranscriptPanelScreen
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.ClickEvent
@@ -113,244 +113,244 @@ object IustitiaCommand {
     }
 
     private fun buildRoot(name: String): LiteralArgumentBuilder<FabricClientCommandSource> =
-        ClientCommandManager.literal(name)
+        ClientCommands.literal(name)
             .executes { list(it) }
-            .then(ClientCommandManager.literal("list").executes { list(it) })
-            .then(ClientCommandManager.literal("status").executes { status(it) })
-            .then(ClientCommandManager.literal("verbose").executes { verbose(it) })
-            .then(ClientCommandManager.literal("reload").executes { reload(it) })
-            .then(ClientCommandManager.literal("reset").executes { reset(it) })
-            .then(ClientCommandManager.literal("config").executes { openConfig(it) })
-            .then(ClientCommandManager.literal("help")
+            .then(ClientCommands.literal("list").executes { list(it) })
+            .then(ClientCommands.literal("status").executes { status(it) })
+            .then(ClientCommands.literal("verbose").executes { verbose(it) })
+            .then(ClientCommands.literal("reload").executes { reload(it) })
+            .then(ClientCommands.literal("reset").executes { reset(it) })
+            .then(ClientCommands.literal("config").executes { openConfig(it) })
+            .then(ClientCommands.literal("help")
                 .executes { help(it, null) }
-                .then(ClientCommandManager.argument("topic", StringArgumentType.word())
+                .then(ClientCommands.argument("topic", StringArgumentType.word())
                     .suggests { _, b -> suggestHelpTopics(b); b.buildFuture() }
                     .executes { help(it, StringArgumentType.getString(it, "topic")) }))
-            .then(ClientCommandManager.literal("hist")
+            .then(ClientCommands.literal("hist")
                 .executes { histTop(it) }
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { histPlayer(it, null) }
-                    .then(ClientCommandManager.argument("check", StringArgumentType.word())
+                    .then(ClientCommands.argument("check", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, checkIds); b.buildFuture() }
                         .executes { histPlayer(it, StringArgumentType.getString(it, "check")) })))
-            .then(ClientCommandManager.literal("report")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("report")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { report(it, "markdown") }
-                    .then(ClientCommandManager.argument("format", StringArgumentType.word())
+                    .then(ClientCommands.argument("format", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("markdown", "json", "text")); b.buildFuture() }
                         .executes { report(it, StringArgumentType.getString(it, "format")) })))
-            .then(ClientCommandManager.literal("transcript")
+            .then(ClientCommands.literal("transcript")
                 .executes { transcriptToggle(it) }
-                .then(ClientCommandManager.literal("panel")
+                .then(ClientCommands.literal("panel")
                     .executes { transcriptToggle(it) }
-                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                    .then(ClientCommands.argument("name", StringArgumentType.word())
                         .suggests { _, b -> suggestNames(b); b.buildFuture() }
                         .executes { transcriptPanelNamed(it) }))
-                .then(ClientCommandManager.argument("name", SafeStringArgument.wordExcluding("panel"))
+                .then(ClientCommands.argument("name", SafeStringArgument.wordExcluding("panel"))
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { transcriptPrint(it) }))
-            .then(ClientCommandManager.literal("evidence")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("evidence")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { evidence(it) }))
-            .then(ClientCommandManager.literal("note")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("note")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { noteShow(it) }
-                    .then(ClientCommandManager.argument("category", StringArgumentType.word())
+                    .then(ClientCommands.argument("category", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("closet", "blatant", "needsReview", "legit")); b.buildFuture() }
-                        .then(ClientCommandManager.argument("text", StringArgumentType.greedyString())
+                        .then(ClientCommands.argument("text", StringArgumentType.greedyString())
                             .executes { noteSet(it) }))))
-            .then(ClientCommandManager.literal("session")
+            .then(ClientCommands.literal("session")
                 .executes { session(it) }
-                .then(ClientCommandManager.literal("screen").executes { sessionScreen(it) }))
-            .then(ClientCommandManager.literal("snapshot")
+                .then(ClientCommands.literal("screen").executes { sessionScreen(it) }))
+            .then(ClientCommands.literal("snapshot")
                 .executes { snapshot(it, null) }
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { snapshot(it, StringArgumentType.getString(it, "name")) }))
-            .then(ClientCommandManager.literal("spectate")
+            .then(ClientCommands.literal("spectate")
                 .executes { spectate(it, null) }
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { spectate(it, StringArgumentType.getString(it, "name")) }))
-            .then(ClientCommandManager.literal("replay")
+            .then(ClientCommands.literal("replay")
                 .executes { replay(it, null, null) }
-                .then(ClientCommandManager.literal("off").executes { replayStop(it) })
-                .then(ClientCommandManager.literal("pause").executes { replayPause(it) })
-                .then(ClientCommandManager.literal("resume").executes { replayResume(it) })
-                .then(ClientCommandManager.literal("seek")
+                .then(ClientCommands.literal("off").executes { replayStop(it) })
+                .then(ClientCommands.literal("pause").executes { replayPause(it) })
+                .then(ClientCommands.literal("resume").executes { replayResume(it) })
+                .then(ClientCommands.literal("seek")
                     // negative = seek backward relative to now (same as the numpad -/+ seeks),
                     // positive = absolute seek — see replaySeek.
-                    .then(ClientCommandManager.argument("seconds", DoubleArgumentType.doubleArg(-60.0, 60.0))
+                    .then(ClientCommands.argument("seconds", DoubleArgumentType.doubleArg(-60.0, 60.0))
                         .executes { replaySeek(it) }))
-                .then(ClientCommandManager.literal("step")
-                    .then(ClientCommandManager.literal("+").executes { replayStep(it, 1) })
-                    .then(ClientCommandManager.literal("-").executes { replayStep(it, -1) }))
-                .then(ClientCommandManager.literal("speed")
-                    .then(ClientCommandManager.argument("speed", StringArgumentType.word())
+                .then(ClientCommands.literal("step")
+                    .then(ClientCommands.literal("+").executes { replayStep(it, 1) })
+                    .then(ClientCommands.literal("-").executes { replayStep(it, -1) }))
+                .then(ClientCommands.literal("speed")
+                    .then(ClientCommands.argument("speed", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("1", "0.5", "0.25")); b.buildFuture() }
                         .executes { replaySpeed(it, StringArgumentType.getString(it, "speed")) }))
-                .then(ClientCommandManager.literal("cam")
-                    .then(ClientCommandManager.argument("mode", StringArgumentType.word())
+                .then(ClientCommands.literal("cam")
+                    .then(ClientCommands.argument("mode", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("free", "follow", "pov", "freecam")); b.buildFuture() }
                         .executes { replayCam(it, StringArgumentType.getString(it, "mode")) }))
-                .then(ClientCommandManager.literal("save")
-                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.literal("save")
+                    .then(ClientCommands.argument("name", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, dev.iustitia.replay.ClipStore.list()); b.buildFuture() }
                         .executes { replaySave(it, StringArgumentType.getString(it, "name")) }))
                 // <target> is overloaded: a NUMBER = the seconds to replay (no focus, 1×), e.g.
                 // `/ius replay 60`; a NAME = the focus player, optionally followed by <seconds> [speed],
                 // e.g. `/ius replay thoria 60 0.5`. A bare `/ius replay` replays the default window.
-                .then(ClientCommandManager.argument("target", SafeStringArgument.wordExcluding("off", "pause", "resume", "seek", "step", "speed", "cam", "save"))
+                .then(ClientCommands.argument("target", SafeStringArgument.wordExcluding("off", "pause", "resume", "seek", "step", "speed", "cam", "save"))
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { replay(it, StringArgumentType.getString(it, "target"), null) }
-                    .then(ClientCommandManager.argument("seconds", DoubleArgumentType.doubleArg(1.0, 60.0))
+                    .then(ClientCommands.argument("seconds", DoubleArgumentType.doubleArg(1.0, 60.0))
                         .executes { replay(it, StringArgumentType.getString(it, "target"), null) }
-                        .then(ClientCommandManager.argument("speed", StringArgumentType.word())
+                        .then(ClientCommands.argument("speed", StringArgumentType.word())
                             .suggests { _, b -> suggestFiltered(b, listOf("1", "0.5", "0.25")); b.buildFuture() }
                             .executes { replay(it, StringArgumentType.getString(it, "target"), StringArgumentType.getString(it, "speed")) }))))
-            .then(ClientCommandManager.literal("clip")
-                .then(ClientCommandManager.argument("seconds", DoubleArgumentType.doubleArg(1.0, 60.0))
+            .then(ClientCommands.literal("clip")
+                .then(ClientCommands.argument("seconds", DoubleArgumentType.doubleArg(1.0, 60.0))
                     .executes { clip(it, null) }
-                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                    .then(ClientCommands.argument("name", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, dev.iustitia.replay.ClipStore.list()); b.buildFuture() }
                         .executes { clip(it, StringArgumentType.getString(it, "name")) })))
-            .then(ClientCommandManager.literal("playclip")
+            .then(ClientCommands.literal("playclip")
                 .executes { playclip(it, null, null) }
-                .then(ClientCommandManager.literal("off").executes { replayStop(it) })
-                .then(ClientCommandManager.argument("name", SafeStringArgument.wordExcluding("off"))
+                .then(ClientCommands.literal("off").executes { replayStop(it) })
+                .then(ClientCommands.argument("name", SafeStringArgument.wordExcluding("off"))
                     .suggests { _, b -> suggestFiltered(b, dev.iustitia.replay.ClipStore.list()); b.buildFuture() }
                     .executes { playclip(it, StringArgumentType.getString(it, "name"), null) }
-                    .then(ClientCommandManager.argument("speed", StringArgumentType.word())
+                    .then(ClientCommands.argument("speed", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("1", "0.5", "0.25")); b.buildFuture() }
                         .executes { playclip(it, StringArgumentType.getString(it, "name"), StringArgumentType.getString(it, "speed")) })))
-            .then(ClientCommandManager.literal("clips").executes { clipsScreen(it) })
-            .then(ClientCommandManager.literal("deleteclip")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("clips").executes { clipsScreen(it) })
+            .then(ClientCommands.literal("deleteclip")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, dev.iustitia.replay.ClipStore.list()); b.buildFuture() }
                     .executes { deleteClip(it) }))
-            .then(ClientCommandManager.literal("delclip")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("delclip")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, dev.iustitia.replay.ClipStore.list()); b.buildFuture() }
                     .executes { deleteClip(it) }))
-            .then(ClientCommandManager.literal("preset")
+            .then(ClientCommands.literal("preset")
                 .executes { presetList(it) }
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, dev.iustitia.config.PresetManager.listAll()); b.buildFuture() }
                     .executes { presetApply(it) }))
-            .then(ClientCommandManager.literal("presets")
+            .then(ClientCommands.literal("presets")
                 .executes { presetList(it) }
-                .then(ClientCommandManager.literal("export")
-                    .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.literal("export")
+                    .then(ClientCommands.argument("name", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, dev.iustitia.config.PresetManager.listAll()); b.buildFuture() }
                         .executes { presetExport(it) }))
-                .then(ClientCommandManager.literal("import")
+                .then(ClientCommands.literal("import")
                     // Bare form reads the clipboard: the chat box caps input at 256 chars, and a
                     // heavily tuned preset's string can be longer than that.
                     .executes { presetImport(it, null) }
-                    .then(ClientCommandManager.argument("string", StringArgumentType.greedyString())
+                    .then(ClientCommands.argument("string", StringArgumentType.greedyString())
                         .executes { presetImport(it, StringArgumentType.getString(it, "string")) })))
-            .then(ClientCommandManager.literal("createpreset")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("createpreset")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .executes { presetCreate(it) }))
-            .then(ClientCommandManager.literal("deletepreset")
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+            .then(ClientCommands.literal("deletepreset")
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, dev.iustitia.config.PresetManager.listCustom()); b.buildFuture() }
                     .executes { presetDelete(it) }))
-            .then(ClientCommandManager.literal("wizard").executes { wizard(it) })
-            .then(ClientCommandManager.literal("keybinds").executes { keybinds(it) })
-            .then(ClientCommandManager.literal("alerts")
+            .then(ClientCommands.literal("wizard").executes { wizard(it) })
+            .then(ClientCommands.literal("keybinds").executes { keybinds(it) })
+            .then(ClientCommands.literal("alerts")
                 .executes { alertsList(it) }
-                .then(ClientCommandManager.argument("target", StringArgumentType.word())
+                .then(ClientCommands.argument("target", StringArgumentType.word())
                     .suggests { _, b -> suggestTargets(b); b.buildFuture() }
                     .executes { alertsSet(it, null) }
-                    .then(ClientCommandManager.argument("state", StringArgumentType.word())
+                    .then(ClientCommands.argument("state", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("on", "off")); b.buildFuture() }
                         .executes { alertsSet(it, StringArgumentType.getString(it, "state")) })))
-            .then(ClientCommandManager.literal("toggle")
+            .then(ClientCommands.literal("toggle")
                 .executes { toggleUsage(it) }
-                .then(ClientCommandManager.argument("check", StringArgumentType.word())
+                .then(ClientCommands.argument("check", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, checkIds); b.buildFuture() }
                     .executes { toggle(it) }))
-            .then(ClientCommandManager.literal("threshold")
+            .then(ClientCommands.literal("threshold")
                 .executes { thresholdUsage(it) }
-                .then(ClientCommandManager.argument("check", StringArgumentType.word())
+                .then(ClientCommands.argument("check", StringArgumentType.word())
                     .suggests { _, b -> suggestFiltered(b, checkIds); b.buildFuture() }
-                    .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.0, 1000.0))
+                    .then(ClientCommands.argument("value", DoubleArgumentType.doubleArg(0.0, 1000.0))
                         .executes { threshold(it) })
-                    .then(ClientCommandManager.literal("default")
+                    .then(ClientCommands.literal("default")
                         .executes { thresholdDefault(it) })
-                    .then(ClientCommandManager.literal("reset")
+                    .then(ClientCommands.literal("reset")
                         .executes { thresholdDefault(it) })))
-            .then(ClientCommandManager.literal("clear")
+            .then(ClientCommands.literal("clear")
                 .executes { clearUsage(it) }
-                .then(ClientCommandManager.literal("all").executes { clearAll(it) })
-                .then(ClientCommandManager.argument("name", SafeStringArgument.wordExcluding("all"))
+                .then(ClientCommands.literal("all").executes { clearAll(it) })
+                .then(ClientCommands.argument("name", SafeStringArgument.wordExcluding("all"))
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { clearPlayer(it) }))
-            .then(ClientCommandManager.literal("exempt")
+            .then(ClientCommands.literal("exempt")
                 .executes { exemptList(it) }
-                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                .then(ClientCommands.argument("name", StringArgumentType.word())
                     .suggests { _, b -> suggestExempt(b); b.buildFuture() }
                     .executes { exemptToggle(it, null) }
-                    .then(ClientCommandManager.argument("state", StringArgumentType.word())
+                    .then(ClientCommands.argument("state", StringArgumentType.word())
                         .suggests { _, b -> suggestFiltered(b, listOf("on", "off")); b.buildFuture() }
                         .executes { exemptToggle(it, StringArgumentType.getString(it, "state")) })))
-            .then(ClientCommandManager.literal("debugfps")
+            .then(ClientCommands.literal("debugfps")
                 .executes { profileStart(it) }
-                .then(ClientCommandManager.literal("start").executes { profileStart(it) })
-                .then(ClientCommandManager.literal("stop").executes { profileStop(it) }))
-            .then(ClientCommandManager.literal("record")
+                .then(ClientCommands.literal("start").executes { profileStart(it) })
+                .then(ClientCommands.literal("stop").executes { profileStop(it) }))
+            .then(ClientCommands.literal("record")
                 .executes { recordStart(it) }
-                .then(ClientCommandManager.literal("start").executes { recordStart(it) })
-                .then(ClientCommandManager.literal("stop")
+                .then(ClientCommands.literal("start").executes { recordStart(it) })
+                .then(ClientCommands.literal("stop")
                     .executes { recordStop(it, null) }
-                    .then(ClientCommandManager.argument("name", StringArgumentType.string())
+                    .then(ClientCommands.argument("name", StringArgumentType.string())
                         .executes { recordStop(it, StringArgumentType.getString(it, "name")) })))
-            .then(ClientCommandManager.literal("chathist")
+            .then(ClientCommands.literal("chathist")
                 .executes { chathistUsage(it) }
-                .then(ClientCommandManager.literal("phrase")
+                .then(ClientCommands.literal("phrase")
                     .executes { chathistUsage(it) }
-                    .then(ClientCommandManager.argument("phrase", StringArgumentType.string())
+                    .then(ClientCommands.argument("phrase", StringArgumentType.string())
                         .executes { chathistPhrase(it, StringArgumentType.getString(it, "phrase"), 1) }
-                        .then(ClientCommandManager.argument("page", IntegerArgumentType.integer(1))
+                        .then(ClientCommands.argument("page", IntegerArgumentType.integer(1))
                             .executes { chathistPhrase(it, StringArgumentType.getString(it, "phrase"), IntegerArgumentType.getInteger(it, "page")) })))
-                .then(ClientCommandManager.literal("target")
-                    .then(ClientCommandManager.argument("username", StringArgumentType.string())
+                .then(ClientCommands.literal("target")
+                    .then(ClientCommands.argument("username", StringArgumentType.string())
                         .suggests { _, b -> suggestNames(b); b.buildFuture() }
-                        .then(ClientCommandManager.argument("phrase", StringArgumentType.string())
+                        .then(ClientCommands.argument("phrase", StringArgumentType.string())
                             .executes { chathistTarget(it, StringArgumentType.getString(it, "username"), StringArgumentType.getString(it, "phrase"), 1) }
-                            .then(ClientCommandManager.argument("page", IntegerArgumentType.integer(1))
+                            .then(ClientCommands.argument("page", IntegerArgumentType.integer(1))
                                 .executes { chathistTarget(it, StringArgumentType.getString(it, "username"), StringArgumentType.getString(it, "phrase"), IntegerArgumentType.getInteger(it, "page")) }))))
                 // `/ius chathist panel <action> [username] [word] [pageamount]` — same queries as the
                 // chat-print chathist, rendered in a live side panel that mirrors TranscriptPanelScreen.
-                .then(ClientCommandManager.literal("panel")
+                .then(ClientCommands.literal("panel")
                     .executes { chathistPanelUsage(it) }
-                    .then(ClientCommandManager.literal("user")
-                        .then(ClientCommandManager.argument("username", StringArgumentType.string())
+                    .then(ClientCommands.literal("user")
+                        .then(ClientCommands.argument("username", StringArgumentType.string())
                             .suggests { _, b -> suggestNames(b); b.buildFuture() }
                             .executes { chathistPanelUser(it, StringArgumentType.getString(it, "username"), 15) }
-                            .then(ClientCommandManager.argument("pageamount", IntegerArgumentType.integer(1, 200))
+                            .then(ClientCommands.argument("pageamount", IntegerArgumentType.integer(1, 200))
                                 .executes { chathistPanelUser(it, StringArgumentType.getString(it, "username"), IntegerArgumentType.getInteger(it, "pageamount")) })))
-                    .then(ClientCommandManager.literal("phrase")
-                        .then(ClientCommandManager.argument("word", StringArgumentType.string())
+                    .then(ClientCommands.literal("phrase")
+                        .then(ClientCommands.argument("word", StringArgumentType.string())
                             .executes { chathistPanelPhrase(it, StringArgumentType.getString(it, "word"), 15) }
-                            .then(ClientCommandManager.argument("pageamount", IntegerArgumentType.integer(1, 200))
+                            .then(ClientCommands.argument("pageamount", IntegerArgumentType.integer(1, 200))
                                 .executes { chathistPanelPhrase(it, StringArgumentType.getString(it, "word"), IntegerArgumentType.getInteger(it, "pageamount")) })))
-                    .then(ClientCommandManager.literal("target")
-                        .then(ClientCommandManager.argument("username", StringArgumentType.string())
+                    .then(ClientCommands.literal("target")
+                        .then(ClientCommands.argument("username", StringArgumentType.string())
                             .suggests { _, b -> suggestNames(b); b.buildFuture() }
-                            .then(ClientCommandManager.argument("word", StringArgumentType.string())
+                            .then(ClientCommands.argument("word", StringArgumentType.string())
                                 .executes { chathistPanelTarget(it, StringArgumentType.getString(it, "username"), StringArgumentType.getString(it, "word"), 15) }
-                                .then(ClientCommandManager.argument("pageamount", IntegerArgumentType.integer(1, 200))
+                                .then(ClientCommands.argument("pageamount", IntegerArgumentType.integer(1, 200))
                                     .executes { chathistPanelTarget(it, StringArgumentType.getString(it, "username"), StringArgumentType.getString(it, "word"), IntegerArgumentType.getInteger(it, "pageamount")) })))))
-                .then(ClientCommandManager.argument("username", SafeStringArgument.stringExcluding("phrase", "target", "panel"))
+                .then(ClientCommands.argument("username", SafeStringArgument.stringExcluding("phrase", "target", "panel"))
                     .suggests { _, b -> suggestNames(b); b.buildFuture() }
                     .executes { chathistUser(it, StringArgumentType.getString(it, "username"), 1) }
-                    .then(ClientCommandManager.argument("page", IntegerArgumentType.integer(1))
+                    .then(ClientCommands.argument("page", IntegerArgumentType.integer(1))
                         .executes { chathistUser(it, StringArgumentType.getString(it, "username"), IntegerArgumentType.getInteger(it, "page")) })))
 
     // ---- feedback helper ----
@@ -457,10 +457,10 @@ object IustitiaCommand {
     private fun openConfig(ctx: CommandContext<FabricClientCommandSource>): Int {
         Minecraft.getInstance().execute {
             try {
-                Minecraft.getInstance().setScreen(YaclScreenBuilder.build(Minecraft.getInstance().currentScreen))
+                Minecraft.getInstance().gui.setScreen(YaclScreenBuilder.build(Minecraft.getInstance().gui.screen()))
             } catch (_: Throwable) {
-                Minecraft.getInstance().player?.sendMessage(
-                    L10n.t("iustitia.cmd.configOpenFail", tag), false
+                Minecraft.getInstance().player?.sendSystemMessage(
+                    L10n.t("iustitia.cmd.configOpenFail", tag)
                 )
             }
         }
@@ -707,7 +707,7 @@ object IustitiaCommand {
     private fun openChatPanel(ctx: CommandContext<FabricClientCommandSource>, subtitle: String, rowsProvider: () -> List<dev.iustitia.chathist.ChatHistory.Row>, limit: Int) {
         if (companionOwnsChat(ctx)) return
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(ChatHistPanelScreen(subtitle, rowsProvider, limit, null)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(ChatHistPanelScreen(subtitle, rowsProvider, limit, null)) } catch (_: Throwable) {} }
         send(ctx, L10n.s("iustitia.cmd.chathistPanelHeader", tag, subtitle, limit))
     }
 
@@ -716,7 +716,7 @@ object IustitiaCommand {
      * dividers. The bottom divider's `[<]` / `[>]` are clickable ([ClickEvent.RunCommand] re-runs the
      * same command variant with page-1 / page+1); they render inert on the first / last page. Lazy:
      * only the requested page's rows are read (`drop((page-1)*8).take(8)`). Empty set → a single "no
-     * messages" line, no dividers. Output via `sendFeedback(Text)` (not [send]) since rows carry
+     * messages" line, no dividers. Output via `sendFeedback(Component)` (not [send]) since rows carry
      * click/hover events. Fail-open.
      */
     private fun renderChatPage(ctx: CommandContext<FabricClientCommandSource>, rows: List<dev.iustitia.chathist.ChatHistory.Row>, page: Int, cmdPrefix: String) {
@@ -749,7 +749,7 @@ object IustitiaCommand {
     /** A `[<]`/`[>]` button: clickable (run-command) + hover-text when [cmd] is non-null, plain when null. */
     private fun clickButton(label: String, cmd: String?, hover: String): Component = try {
         if (cmd == null) Component.literal("§8$label")
-        else Component.literal(label).styled { s ->
+        else Component.literal(label).withStyle { s ->
             s.withClickEvent(ClickEvent.RunCommand(cmd)).withHoverEvent(HoverEvent.ShowText(Component.literal(hover)))
         }
     } catch (_: Throwable) { Component.literal(label) }
@@ -757,13 +757,13 @@ object IustitiaCommand {
     // ---- history ----
 
     /** Bare `/ius hist` — opens the searchable player list (#1). Mirrors the [openConfig]
-     *  `MinecraftClient.execute{}` + fail-open pattern; falls back to the chat top-offenders
+     *  `Minecraft.execute{}` + fail-open pattern; falls back to the chat top-offenders
      *  dump if the screen can't be opened (e.g. opened from a non-foreground context). */
     private fun histTop(ctx: CommandContext<FabricClientCommandSource>): Int {
         val mc = Minecraft.getInstance()
         mc.execute {
             try {
-                mc.setScreen(PlayerSearchScreen(mc.currentScreen))
+                mc.gui.setScreen(PlayerSearchScreen(mc.gui.screen()))
             } catch (_: Throwable) {
                 histTopChat(ctx)
             }
@@ -796,7 +796,7 @@ object IustitiaCommand {
         val mc = Minecraft.getInstance()
         mc.execute {
             try {
-                mc.setScreen(PlayerHistoryScreen(uuid, mc.currentScreen))
+                mc.gui.setScreen(PlayerHistoryScreen(uuid, mc.gui.screen()))
             } catch (_: Throwable) {
                 histPlayerChat(ctx, uuid, name, checkFilter)
             }
@@ -845,7 +845,7 @@ object IustitiaCommand {
         } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.reportBuildFail", tag, name)); return 0
         }
-        try { Minecraft.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
+        try { Minecraft.getInstance().keyboardHandler.setClipboard(text) } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.clipboardFail", tag)); return 0
         }
         send(ctx, L10n.s("iustitia.cmd.reportCopied", tag, name, text.length, fmt))
@@ -1008,7 +1008,7 @@ object IustitiaCommand {
         // aren't mutually exclusive. Fail-open (a screen-open error never blocks the chat print).
         if (ConfigManager.config.transcriptPanel) {
             val mc = Minecraft.getInstance()
-            mc.execute { try { mc.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
+            mc.execute { try { mc.gui.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
         }
         return 1
     }
@@ -1049,10 +1049,10 @@ object IustitiaCommand {
     private fun transcriptToggle(ctx: CommandContext<FabricClientCommandSource>): Int {
         val mc = Minecraft.getInstance()
         try {
-            if (mc.currentScreen is TranscriptPanelScreen) { mc.setScreen(null); send(ctx, L10n.s("iustitia.cmd.transcriptPanelClosed", tag)); return 1 }
+            if (mc.gui.screen() is TranscriptPanelScreen) { mc.gui.setScreen(null); send(ctx, L10n.s("iustitia.cmd.transcriptPanelClosed", tag)); return 1 }
             val target = crosshairTarget()
             if (target == null) { send(ctx, L10n.s("iustitia.cmd.transcriptPanelLook", tag)); return 0 }
-            mc.execute { try { mc.setScreen(TranscriptPanelScreen(target.first, target.second, null)) } catch (_: Throwable) {} }
+            mc.execute { try { mc.gui.setScreen(TranscriptPanelScreen(target.first, target.second, null)) } catch (_: Throwable) {} }
             send(ctx, L10n.s("iustitia.cmd.transcriptPanelOpen", tag, target.second))
         } catch (_: Throwable) { send(ctx, L10n.s("iustitia.cmd.transcriptPanelFail", tag)); }
         return 1
@@ -1064,7 +1064,7 @@ object IustitiaCommand {
         val uuid = resolveUuid(name)
         if (uuid == null) { send(ctx, L10n.s("iustitia.cmd.noData", tag, name)); return 0 }
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(TranscriptPanelScreen(uuid, name, null)) } catch (_: Throwable) {} }
         send(ctx, L10n.s("iustitia.cmd.transcriptPanelOpen", tag, name))
         return 1
     }
@@ -1144,7 +1144,7 @@ object IustitiaCommand {
 
     private fun sessionScreen(ctx: CommandContext<FabricClientCommandSource>): Int {
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(SessionScreen(mc.currentScreen)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(SessionScreen(mc.gui.screen())) } catch (_: Throwable) {} }
         return 1
     }
 
@@ -1201,7 +1201,7 @@ object IustitiaCommand {
         }
         // The watched player must be currently loaded so the camera can position on them; if not,
         // the render-thread target-gone path would just immediately cancel the watch.
-        val loaded = try { mc.world?.getPlayerByUuid(target.first) != null } catch (_: Throwable) { false }
+        val loaded = try { mc.level?.getPlayerByUUID(target.first) != null } catch (_: Throwable) { false }
         if (!loaded) {
             send(ctx, L10n.s("iustitia.cmd.spectateNotRendered", tag, target.second))
             return 0
@@ -1576,13 +1576,13 @@ object IustitiaCommand {
     // ---- wizard (#13) + keybinds (#14) ----
     private fun wizard(ctx: CommandContext<FabricClientCommandSource>): Int {
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
         return 1
     }
 
     private fun keybinds(ctx: CommandContext<FabricClientCommandSource>): Int {
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(KeybindHubScreen(mc.currentScreen)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(KeybindHubScreen(mc.gui.screen())) } catch (_: Throwable) {} }
         return 1
     }
 
@@ -1590,7 +1590,7 @@ object IustitiaCommand {
     private fun clipsScreen(ctx: CommandContext<FabricClientCommandSource>): Int {
         if (companionOwnsReplay(ctx)) return 1
         val mc = Minecraft.getInstance()
-        mc.execute { try { mc.setScreen(dev.iustitia.ui.ClipManagerScreen(mc.currentScreen)) } catch (_: Throwable) {} }
+        mc.execute { try { mc.gui.setScreen(dev.iustitia.ui.ClipManagerScreen(mc.gui.screen())) } catch (_: Throwable) {} }
         return 1
     }
 
@@ -1670,7 +1670,7 @@ object IustitiaCommand {
         }
         val text = dev.iustitia.config.PresetShare.encode(name, template)
         if (text == null) { send(ctx, L10n.s("iustitia.cmd.presetExportEncodeFail", tag, name)); return 0 }
-        try { Minecraft.getInstance().keyboard.setClipboard(text) } catch (_: Throwable) {
+        try { Minecraft.getInstance().keyboardHandler.setClipboard(text) } catch (_: Throwable) {
             send(ctx, L10n.s("iustitia.cmd.presetExportClipFail", tag)); return 0
         }
         // The chat box takes 256 chars; "/ius presets import " uses 20 of them.
@@ -1683,7 +1683,7 @@ object IustitiaCommand {
     /** `/ius presets import [string]` — validate a share string (from the argument, or the
      *  clipboard when bare) and save it as a custom preset. Never applies it; never overwrites. */
     private fun presetImport(ctx: CommandContext<FabricClientCommandSource>, arg: String?): Int {
-        val input = arg ?: try { Minecraft.getInstance().keyboard.clipboard } catch (_: Throwable) { null }
+        val input = arg ?: try { Minecraft.getInstance().keyboardHandler.clipboard } catch (_: Throwable) { null }
         if (input.isNullOrBlank()) {
             send(ctx, L10n.s("iustitia.cmd.presetImportNothing", tag))
             return 0
