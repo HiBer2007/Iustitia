@@ -356,15 +356,15 @@ object PresetScenarios {
         /** Run `/<cmd>` the way the chat box does. Fabric's client-command hook claims `/ius`
          *  before anything reaches the server. */
         private fun command(cmd: String) = ClientThread.runOnClient { mc ->
-            val nh = mc.player?.networkHandler ?: fail("no player network handler to run /$cmd")
-            nh.sendChatCommand(cmd)
+            val nh = mc.player?.connection ?: fail("no player network handler to run /$cmd")
+            nh.sendCommand(cmd)
         }
 
-        /** Plain text of the chat HUD's lines, newest first (Yarn `ChatHud.messages`). */
+        /** Plain text of the chat HUD's lines, newest first (`ChatComponent.allMessages`). */
         private fun chat(): List<String> = ClientThread.computeOnClient { mc ->
-            val hud = mc.inGameHud.chatHud
-            val f = hud.javaClass.getDeclaredField("messages").apply { isAccessible = true }
-            (f.get(hud) as List<*>).map { (it as net.minecraft.client.GuiMessage).content().string }
+            val hud = mc.gui.hud.chat
+            val f = hud.javaClass.getDeclaredField("allMessages").apply { isAccessible = true }
+            (f.get(hud) as List<*>).map { (it as net.minecraft.client.multiplayer.chat.GuiMessage).content().string }
         }
 
         /** The chat lines a command produced. */
@@ -390,8 +390,8 @@ object PresetScenarios {
         }
 
         /** GLFW on macOS ignores an empty string, so "clear" is a single space (blank either way). */
-        private fun setClipboard(text: String) = ClientThread.runOnClient { mc -> mc.keyboard.setClipboard(text) }
-        private fun clipboard(): String = ClientThread.computeOnClient { mc -> mc.keyboard.clipboard ?: "" }
+        private fun setClipboard(text: String) = ClientThread.runOnClient { mc -> mc.keyboardHandler.setClipboard(text) }
+        private fun clipboard(): String = ClientThread.computeOnClient { mc -> mc.keyboardHandler.clipboard }
 
         /** A share string carrying an arbitrary payload, for the hostile cases. */
         private fun forge(payload: String): String {
@@ -493,7 +493,7 @@ object PresetScenarios {
                     ClientThread.runOnClient { mc ->
                         ConfigManager.configFromJsonInto(com.google.gson.JsonParser.parseString(savedConfig).asJsonObject, ConfigManager.config)
                         ConfigManager.save()
-                        mc.keyboard.setClipboard(savedClipboard)
+                        mc.keyboardHandler.setClipboard(savedClipboard)
                     }
                 } catch (_: Throwable) {}
             }
