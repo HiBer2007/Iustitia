@@ -129,6 +129,31 @@ data class IustitiaConfig(
      *  only when [nametagGreenEnabled] (so clean players aren't boxed unless you opted into green). */
     var targetHighlight: Boolean = true,
 
+    // --- Foot trail + floating nameplates (26.3 port additions) ---
+
+    /** Foot trail: draw a short trail of small tier-colored wireframe squares at each tracked
+     *  player's feet, one per recorded position, so a player's movement path reads at a glance.
+     *  Render-only, depth-tested (no wallhack). Yellow/red trails are always drawn; clean (green)
+     *  trails follow [footTrailGreen] so the user can keep the world uncluttered. */
+    var footTrail: Boolean = true,
+
+    /** Show the foot trail for clean (GREEN) players too. On by default: a not-yet-detected player
+     *  is exactly the one a moderator wants to watch, so hiding the trail until a flag lands would
+     *  only surface it after the fact. */
+    var footTrailGreen: Boolean = true,
+
+    /** Trail length in recorded ticks (samples), clamped to 1..40 by the renderer. */
+    var footTrailTicks: Int = 20,
+
+    /** Floating nameplate: draw the tier glyph + player name above every tracked player's head
+     *  (supplementing the vanilla nametag prefix). Yellow/red plates stay visible while the player
+     *  sneaks (vanilla hides the vanilla nametag then); clean plates follow vanilla visibility. */
+    var nameplates: Boolean = true,
+
+    /** Emissive (glowing) red nameplate: red-tier plates are drawn with a bright outline + full
+     *  brightness so a confirmed cheater is unmistakable. Off = plain red text. */
+    var nameplateRedGlow: Boolean = true,
+
     /** Watch follow-cam: pressing the `watch` keybind on a crosshair-targeted OTHER player starts a
      *  sustained slow auto-orbit third-person camera around them (a "spectate the cheater" view);
      *  press again to stop. Render-only — the camera auto-reverts to your view the instant you stop /

@@ -293,6 +293,12 @@ object ConfigManager {
         addProperty("lagHudIcon", c.lagHudIcon)
         addProperty("confidenceHud", c.confidenceHud)
         addProperty("targetHighlight", c.targetHighlight)
+        // 26.3 port additions: foot trail + floating nameplates.
+        addProperty("footTrail", c.footTrail)
+        addProperty("footTrailGreen", c.footTrailGreen)
+        addProperty("footTrailTicks", c.footTrailTicks)
+        addProperty("nameplates", c.nameplates)
+        addProperty("nameplateRedGlow", c.nameplateRedGlow)
         addProperty("watchFollowCam", c.watchFollowCam)
         addProperty("burstSparks", c.burstSparks)
         addProperty("hoverTooltip", c.hoverTooltip)
@@ -393,6 +399,11 @@ object ConfigManager {
         if (o.has("lagHudIcon")) c.lagHudIcon = o.get("lagHudIcon").asBoolean
         if (o.has("confidenceHud")) c.confidenceHud = o.get("confidenceHud").asBoolean
         if (o.has("targetHighlight")) c.targetHighlight = o.get("targetHighlight").asBoolean
+        if (o.has("footTrail")) c.footTrail = o.get("footTrail").asBoolean
+        if (o.has("footTrailGreen")) c.footTrailGreen = o.get("footTrailGreen").asBoolean
+        if (o.has("footTrailTicks")) c.footTrailTicks = o.get("footTrailTicks").asInt
+        if (o.has("nameplates")) c.nameplates = o.get("nameplates").asBoolean
+        if (o.has("nameplateRedGlow")) c.nameplateRedGlow = o.get("nameplateRedGlow").asBoolean
         if (o.has("watchFollowCam")) c.watchFollowCam = o.get("watchFollowCam").asBoolean
         if (o.has("burstSparks")) c.burstSparks = o.get("burstSparks").asBoolean
         if (o.has("hoverTooltip")) c.hoverTooltip = o.get("hoverTooltip").asBoolean
