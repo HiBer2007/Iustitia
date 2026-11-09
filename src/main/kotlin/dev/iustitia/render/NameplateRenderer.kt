@@ -98,16 +98,18 @@ object NameplateRenderer {
 
                     val tier = tp.tier
                     val sneaking = try { entity.isShiftKeyDown } catch (_: Throwable) { false }
+                    // Only supplement vanilla, never duplicate it: while the server lets the vanilla
+                    // nametag render (the normal standing case) the tier already shows through the
+                    // nametag prefix, so our own plate would just overlap it. The plate exists for the
+                    // one case vanilla hides the name — a discrete (sneaking) player — and there only
+                    // suspects are worth labelling.
+                    if (!sneaking || tier == FlagHistory.Tier.GREEN) continue
                     val pos = entity.position()
                     val dx = pos.x - camPos.x
                     val dy = pos.y - camPos.y
                     val dz = pos.z - camPos.z
                     val distSq = dx * dx + dy * dy + dz * dz
-                    if (tier == FlagHistory.Tier.GREEN) {
-                        // Vanilla nametag visibility: hidden while sneaking, capped by range.
-                        if (sneaking) continue
-                        if (distSq > GREEN_RANGE_SQ) continue
-                    }
+                    if (distSq > GREEN_RANGE_SQ) continue
 
                     val color: Int
                     val glyph: String

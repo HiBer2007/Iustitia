@@ -303,7 +303,14 @@ object PresetManager {
      */
     private fun everyday(): IustitiaConfig = IustitiaConfig().apply {
         targetHighlight = false; watchFollowCam = false; burstSparks = false
-        hoverTooltip = false; tabListBadge = false; nametagBurstPulse = false
+        // 26.3 port: the tab-list tier badge and the two new display cues (foot trail, floating
+        // nameplates) stay ON in the everyday profile. They are read-only tier cues a moderator
+        // reads at a glance, and the port's request was explicitly to see them for clean players
+        // too; disabling them here made them silently absent for everyone on the default preset.
+        tabListBadge = true; nametagBurstPulse = false
+        footTrail = true; footTrailGreen = true
+        nameplates = true; nameplateRedGlow = true
+        hoverTooltip = false
         lagHudIcon = true   // the one light visual: explains WHY alerts soften during lag bursts
         confidenceHud = false; transcriptPanel = false
         alertLevel = 1; alertBatching = true; compactMode = false; verbose = false

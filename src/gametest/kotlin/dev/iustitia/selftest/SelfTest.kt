@@ -430,6 +430,14 @@ object SelfTest {
     class ScenarioBuilder internal constructor(
         private val ctx: ClientGameTestContext,
     ) {
+        /**
+         * 26.3: `Entity.getId()` throws a hard `IllegalStateException` while the id is still 0
+         * ("Tried to access entity ID before ID assignment"). A client-side bot is never registered
+         * by a server, so nothing assigns one; every bot therefore gets a stable non-zero id well
+         * above the range real entities use, and the synthetic packets the drives publish carry it.
+         */
+        private val botIds = java.util.concurrent.atomic.AtomicInteger(900_000)
+
         internal val bots = mutableListOf<BotHandle>()
         internal val tickActions = mutableListOf<Pair<Int, TickAction>>() // (everyN, action)
         internal val expectations = mutableListOf<Triple<UUID, String, Boolean>>() // bot, check, mustAlert
@@ -468,6 +476,9 @@ object SelfTest {
                 val uuid = UUID.nameUUIDFromBytes("iustitia-selftest-$unique".toByteArray())
                 val profile = com.mojang.authlib.GameProfile(uuid, unique)
                 val e = net.minecraft.client.player.RemotePlayer(world, profile)
+                // 26.3: assign an id before the bot is used in any packet - `getId()` throws while
+                // it is still 0 (see [botIds]).
+                e.setId(botIds.getAndIncrement())
                 e.setPos(x, y, z)
                 try { e.setOnGround(false) } catch (_: Throwable) { }
                 world.addEntity(e)
