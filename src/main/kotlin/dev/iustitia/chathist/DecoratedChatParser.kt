@@ -129,7 +129,7 @@ object DecoratedChatParser {
      * name for [uuid]; falls back to [fallback]. Fail-open (returns [fallback]).
      */
     fun resolveCleanName(uuid: UUID, fallback: String): String = try {
-        Minecraft.getInstance().networkHandler?.getPlayerListEntry(uuid)?.profile?.name
+        Minecraft.getInstance().getConnection()?.getPlayerListEntry(uuid)?.profile?.name
             ?.takeIf { it.isNotBlank() } ?: fallback
     } catch (_: Throwable) { fallback }
 
@@ -199,7 +199,7 @@ object DecoratedChatParser {
     }
 
     private fun tabNames(): List<String> = try {
-        val h = Minecraft.getInstance().networkHandler ?: return emptyList()
+        val h = Minecraft.getInstance().getConnection() ?: return emptyList()
         h.playerList.mapNotNull { it.profile?.name }.filter { it.isNotBlank() }
     } catch (_: Throwable) { emptyList() }
 
@@ -215,7 +215,7 @@ object DecoratedChatParser {
     private fun resolveByName(name: String, permissive: Boolean): UUID? {
         val mc = Minecraft.getInstance()
         val local = try { mc.player?.uuid } catch (_: Throwable) { null }
-        val entry = try { mc.networkHandler?.getCaseInsensitivePlayerInfo(name) } catch (_: Throwable) { null }
+        val entry = try { mc.getConnection()?.getCaseInsensitivePlayerInfo(name) } catch (_: Throwable) { null }
         val uuid = entry?.profile?.id
         if (uuid != null) {
             if (uuid == local) return null

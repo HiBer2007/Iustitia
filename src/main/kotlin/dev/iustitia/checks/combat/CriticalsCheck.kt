@@ -177,7 +177,7 @@ class CriticalsCheck : Check() {
 
     /** True if the attacker's main hand holds a mace (1.21+); auto-fail-open pre-1.21. */
     private fun isMaceHeld(tp: TrackedPlayer): Boolean = try {
-        tp.entity?.mainHandStack?.item is MaceItem
+        tp.entity?.mainHandItem?.item is MaceItem
     } catch (_: Throwable) {
         false
     }

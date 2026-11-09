@@ -233,7 +233,7 @@ class NoKnockbackCheck : Check() {
         if (tick - EntityTrackerManager.lastServerLagTick <= 4 ||
             tick - EntityTrackerManager.lastLagBurstTick <= 2
         ) return
-        val world = Minecraft.getInstance().world ?: return
+        val world = Minecraft.getInstance().level ?: return
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         val footY = Math.floor(tp.pos.y).toInt()

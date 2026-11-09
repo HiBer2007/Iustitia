@@ -124,7 +124,7 @@ object WorldQueries {
     fun isLiquidAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
-            state.isOf(Blocks.WATER) || state.isOf(Blocks.LAVA) || !state.fluidState.isEmpty
+            state.`is`(Blocks.WATER) || state.`is`(Blocks.LAVA) || !state.fluidState.isEmpty
         } catch (_: Throwable) {
             false
         }
@@ -135,8 +135,8 @@ object WorldQueries {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
             state.isIn(net.minecraft.tags.BlockTags.CLIMBABLE) ||
-                state.isOf(Blocks.VINE) || state.isOf(Blocks.LADDER) ||
-                state.isOf(Blocks.SCAFFOLDING)
+                state.`is`(Blocks.VINE) || state.`is`(Blocks.LADDER) ||
+                state.`is`(Blocks.SCAFFOLDING)
         } catch (_: Throwable) {
             false
         }
@@ -151,8 +151,8 @@ object WorldQueries {
         return try {
             if (isLiquidAt(world, x, y, z)) return true
             val state = blockStateAt(world, x, y, z) ?: return false
-            state.isOf(Blocks.COBWEB) || state.isOf(Blocks.SOUL_SAND) ||
-                state.isOf(Blocks.SOUL_SOIL) || state.isOf(Blocks.HONEY_BLOCK)
+            state.`is`(Blocks.COBWEB) || state.`is`(Blocks.SOUL_SAND) ||
+                state.`is`(Blocks.SOUL_SOIL) || state.`is`(Blocks.HONEY_BLOCK)
         } catch (_: Throwable) {
             false
         }
@@ -164,7 +164,7 @@ object WorldQueries {
     fun isLilyPadAt(world: ClientLevel?, x: Int, y: Int, z: Int): Boolean {
         return try {
             val state = blockStateAt(world, x, y, z) ?: return false
-            state.isOf(Blocks.LILY_PAD)
+            state.`is`(Blocks.LILY_PAD)
         } catch (_: Throwable) {
             false
         }

@@ -264,7 +264,7 @@ object EntityTrackerManager {
         tp.prevDeltaY = tp.deltaY
         tp.deltaY = rawDelta.y
         tp.delta = rawDelta
-        if (rawDelta.lengthSquared() >= 0.0001) tp.lastMoveTick = tick
+        if (rawDelta.lengthSqr() >= 0.0001) tp.lastMoveTick = tick
         tp.lastPos = tp.pos
         tp.pos = newPos
         tp.lastYaw = tp.yaw; tp.yaw = newYaw
@@ -328,8 +328,8 @@ object EntityTrackerManager {
         tp.isUsingConsumable = try {
             if (!e.isUsingItem) false
             else {
-                val main = e.mainHandStack.useAction
-                val off = e.offHandStack.useAction
+                val main = e.mainHandItem.useAction
+                val off = e.offhandItem.useAction
                 main == ItemUseAnimation.EAT || main == ItemUseAnimation.DRINK ||
                     off == ItemUseAnimation.EAT || off == ItemUseAnimation.DRINK
             }
@@ -341,8 +341,8 @@ object EntityTrackerManager {
         tp.isBlocking = try {
             if (!e.isUsingItem) false
             else {
-                val main = e.mainHandStack.useAction
-                val off = e.offHandStack.useAction
+                val main = e.mainHandItem.useAction
+                val off = e.offhandItem.useAction
                 main == ItemUseAnimation.BLOCK || off == ItemUseAnimation.BLOCK
             }
         } catch (_: Throwable) {
@@ -365,7 +365,7 @@ object EntityTrackerManager {
         // Also clears fallAccum so void-fall + respawn doesn't fire NoFall (a void-fall leaves a
         // huge stale fallAccum that would fire NoFall the moment the player lands at spawn, even
         // though the fall was voided by the teleport).
-        if (rawDelta.lengthSquared() > 64.0) {
+        if (rawDelta.lengthSqr() > 64.0) {
             tp.lastTeleportTick = tick
             tp.fallAccum = 0.0
         }

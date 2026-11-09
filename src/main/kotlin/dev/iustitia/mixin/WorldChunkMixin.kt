@@ -49,7 +49,7 @@ class WorldChunkMixin {
         try {
             if (CompanionMods.snapClip) return
             if (!ConfigManager.config.replayCapture) return
-            val world = Minecraft.getInstance().world ?: return
+            val world = Minecraft.getInstance().level ?: return
             val tick = Iustitia.tickCounter
             val before = try { ChunkCapture.stateKey(world.getBlockState(pos)) } catch (_: Throwable) { "minecraft:air" }
             val after = try { ChunkCapture.stateKey(state) } catch (_: Throwable) { "minecraft:air" }

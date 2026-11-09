@@ -134,7 +134,7 @@ class ArmorStandEntityRendererMixin {
      * [PROX_VERT]). Uses [World.getOtherEntities] (entity-section indexed) so it's cheap. Fail-open.
      */
     private fun proximityOwner(stand: ArmorStand): RemotePlayer? {
-        val world = Minecraft.getInstance().world ?: return null
+        val world = Minecraft.getInstance().level ?: return null
         val self = Minecraft.getInstance().player?.uuid
         val box = AABB.of(Vec3(stand.x, stand.y, stand.z), PROX_BOX_X, PROX_BOX_Y, PROX_BOX_X)
         var best: RemotePlayer? = null

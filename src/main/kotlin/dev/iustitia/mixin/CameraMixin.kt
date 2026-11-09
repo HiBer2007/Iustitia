@@ -90,7 +90,7 @@ class CameraMixin {
                     return
                 }
                 val mc = Minecraft.getInstance()
-                val offender = mc.world?.getPlayerByUuid(pending.uuid)
+                val offender = mc.level?.getPlayerByUuid(pending.uuid)
                 if (offender == null || offender.isRemoved) {
                     // Not loaded yet this frame — re-arm so we retry next frame (still single-frame
                     // per attempt; the deadline above bounds total retries).
@@ -119,14 +119,14 @@ class CameraMixin {
      * solid block (so a wall-facing offender doesn't yield a black/inside-block screenshot).
      */
     private fun positionSelfie(offender: Entity, tickDelta: Float) {
-        val eye = offender.getCameraPosVec(tickDelta)
-        val yawRad = offender.getYaw() * (PI / 180.0)
+        val eye = offender.getEyePosition(tickDelta)
+        val yawRad = offender.getYRot() * (PI / 180.0)
         // MC yaw convention: yaw 0 → +Z (south); forward = (-sin yaw, +cos yaw).
         val fwdX = -sin(yawRad)
         val fwdZ = cos(yawRad)
 
         val mc = Minecraft.getInstance()
-        val w = mc.world
+        val w = mc.level
         var dist = SELFIE_DIST
         if (w != null) {
             // Step back toward the offender until the camera block is air (avoid wall-clipping).
@@ -140,7 +140,7 @@ class CameraMixin {
             }
         }
         val camPos = Vec3(eye.x + fwdX * dist, eye.y, eye.z + fwdZ * dist)
-        setRotation(offender.getYaw() + 180f, 0f)
+        setRotation(offender.getYRot() + 180f, 0f)
         setPos(camPos)
     }
 
@@ -177,7 +177,7 @@ class CameraMixin {
                     val x = Mth.lerp(td.toDouble(), ReplayState.prevFcX, ReplayState.fcX)
                     val y = Mth.lerp(td.toDouble(), ReplayState.prevFcY, ReplayState.fcY)
                     val z = Mth.lerp(td.toDouble(), ReplayState.prevFcZ, ReplayState.fcZ)
-                    val yaw = Mth.lerpAngleDegrees(td, ReplayState.prevFcYaw, ReplayState.fcYaw)
+                    val yaw = Mth.rotLerp(td, ReplayState.prevFcYaw, ReplayState.fcYaw)
                     val pitch = Mth.lerp(td, ReplayState.prevFcPitch, ReplayState.fcPitch)
                     setRotation(yaw, pitch)
                     setPos(Vec3(x, y, z))
@@ -258,7 +258,7 @@ class CameraMixin {
             if (!WatchState.active) return false
             val uuid = WatchState.targetUuid ?: return false
             val mc = Minecraft.getInstance()
-            val offender = mc.world?.getPlayerByUuid(uuid)
+            val offender = mc.level?.getPlayerByUuid(uuid)
             if (offender == null || offender.isRemoved) {
                 // Target left the world — flag an exit for the client-thread tick loop to restore
                 // the HUD/perspective state + chat (option writes stay off this render thread).
@@ -292,7 +292,7 @@ class CameraMixin {
      *  - dir = eye − camPos; yaw = atan2(−dirX, dirZ); pitch = −atan2(dirY, horiz).
      */
     private fun positionWatch(offender: Entity, tickDelta: Float) {
-        val eye = offender.getCameraPosVec(tickDelta)
+        val eye = offender.getEyePosition(tickDelta)
         val mc = Minecraft.getInstance()
         val player = mc.player ?: return
         val yawRad = player.getYaw() * (PI / 180.0)

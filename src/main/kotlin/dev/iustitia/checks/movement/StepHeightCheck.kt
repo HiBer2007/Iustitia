@@ -55,7 +55,7 @@ class StepHeightCheck : Check() {
             if (dy > limit && dy <= 2.5 && ctx.wasGrounded &&
                 dy > jumpImpulseCeiling(tp) + JUMP_MARGIN
             ) {
-                val world = Minecraft.getInstance().world
+                val world = Minecraft.getInstance().level
                 if (world != null && WorldQueries.isSolidBelow(world, tp.pos.x, tp.pos.y, tp.pos.z, 0.7)) {
                     // Slime-block trampoline: a slime bounce can launch a player >0.6 in one
                     // tick from a grounded tick, mimicking a step. Skip the flag (guard, not
@@ -67,7 +67,7 @@ class StepHeightCheck : Check() {
                         Math.floor(tp.pos.y - 0.7).toInt(),
                         Math.floor(tp.pos.z).toInt()
                     )
-                    val slimeBounce = below != null && below.isOf(Blocks.SLIME_BLOCK)
+                    val slimeBounce = below != null && below.`is`(Blocks.SLIME_BLOCK)
                     if (!slimeBounce) flag(tp, ctx, 1.0, "Step", tick)
                 }
             }

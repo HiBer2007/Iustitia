@@ -582,7 +582,7 @@ class KillAuraCheck : Check() {
         if (ctx.groundSkipTick == NO_TICK || tick - ctx.groundSkipTick >= BlockLookupBudget.RATE_LIMIT_N) {
             val ground = WorldQueries.blockStateAt(world, bx, by, bz)
             ctx.groundSkip = ground == null ||
-                ground.isOf(Blocks.ICE) || ground.isOf(Blocks.PACKED_ICE) || ground.isOf(Blocks.BLUE_ICE)
+                ground.`is`(Blocks.ICE) || ground.`is`(Blocks.PACKED_ICE) || ground.`is`(Blocks.BLUE_ICE)
             ctx.groundSkipTick = tick
         }
         return ctx.groundSkip
@@ -616,7 +616,7 @@ class KillAuraCheck : Check() {
         // Ice keeps momentum pointing off-yaw for many ticks even for legit players — skip it.
         // Routed through the shared block-lookup scratch like the movement checks: the chunk gate
         // is the TrackedPlayer per-tick dedup, and the ground verdict is rate-limit cached.
-        val world = Minecraft.getInstance().world ?: return
+        val world = Minecraft.getInstance().level ?: return
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         if (!tp.chunkLoadedCached(world, tick, bx, bz)) return // chunk unloaded — fail-negative, never FP

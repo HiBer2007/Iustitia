@@ -59,7 +59,7 @@ class MaceSmashCheck : Check() {
             // hand at the attack tick (the deferred eval tick may follow a hotbar swap),
             // and the alert position is the attack-tick pos, not the eval-tick pos.
             ctx.pendingAttack = ev.tick
-            ctx.attackMaceHeld = try { tp.entity?.mainHandStack?.item is MaceItem } catch (_: Throwable) { false }
+            ctx.attackMaceHeld = try { tp.entity?.mainHandItem?.item is MaceItem } catch (_: Throwable) { false }
             ctx.attackPos = tp.pos
         } catch (_: Throwable) {}
     }

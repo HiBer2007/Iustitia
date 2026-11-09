@@ -207,7 +207,7 @@ object ReplayBuffer {
         if (!enabled) return
         try {
             val mc = Minecraft.getInstance()
-            val world = mc.world
+            val world = mc.level
             // One config snapshot for the whole tick (~8 [ConfigManager.config] getter reads collapsed
             // to one): the gates below can't disagree mid-tick if a config save swaps the snapshot
             // between them (e.g. entity capture on, entity cap from the new values).
@@ -468,12 +468,12 @@ object ReplayBuffer {
         val maxHealth = try { e?.getMaxHealth() ?: 20f } catch (_: Throwable) { 20f }
         val bodyYaw = try { e?.bodyYaw ?: tp.yaw } catch (_: Throwable) { tp.yaw }
         val headYaw = try { e?.headYaw ?: tp.yaw } catch (_: Throwable) { tp.yaw }
-        val mainHand = idOf(e?.mainHandStack)
-        val offHand = idOf(e?.offHandStack)
-        val head = idOf(e?.getEquippedStack(EquipmentSlot.HEAD))
-        val chest = idOf(e?.getEquippedStack(EquipmentSlot.CHEST))
-        val legs = idOf(e?.getEquippedStack(EquipmentSlot.LEGS))
-        val feet = idOf(e?.getEquippedStack(EquipmentSlot.FEET))
+        val mainHand = idOf(e?.mainHandItem)
+        val offHand = idOf(e?.offhandItem)
+        val head = idOf(e?.getItemBySlot(EquipmentSlot.HEAD))
+        val chest = idOf(e?.getItemBySlot(EquipmentSlot.CHEST))
+        val legs = idOf(e?.getItemBySlot(EquipmentSlot.LEGS))
+        val feet = idOf(e?.getItemBySlot(EquipmentSlot.FEET))
         PlayerSnap(
             u.mostSignificantBits, u.leastSignificantBits,
             tp.pos.x.toFloat(), tp.pos.y.toFloat(), tp.pos.z.toFloat(),
@@ -509,11 +509,11 @@ object ReplayBuffer {
             hurtTime = try { p.hurtTime.toByte() } catch (_: Throwable) { 0 },
             health = try { p.getHealth() } catch (_: Throwable) { 20f },
             maxHealth = try { p.getMaxHealth() } catch (_: Throwable) { 20f },
-            mainHand = idOf(p.mainHandStack), offHand = idOf(p.offHandStack),
-            head = idOf(p.getEquippedStack(EquipmentSlot.HEAD)),
-            chest = idOf(p.getEquippedStack(EquipmentSlot.CHEST)),
-            legs = idOf(p.getEquippedStack(EquipmentSlot.LEGS)),
-            feet = idOf(p.getEquippedStack(EquipmentSlot.FEET)),
+            mainHand = idOf(p.mainHandItem), offHand = idOf(p.offhandItem),
+            head = idOf(p.getItemBySlot(EquipmentSlot.HEAD)),
+            chest = idOf(p.getItemBySlot(EquipmentSlot.CHEST)),
+            legs = idOf(p.getItemBySlot(EquipmentSlot.LEGS)),
+            feet = idOf(p.getItemBySlot(EquipmentSlot.FEET)),
         )
     } catch (_: Throwable) { null }
 

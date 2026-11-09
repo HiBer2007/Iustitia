@@ -95,7 +95,7 @@ object ChunkRollingCapture {
     /** Capture up to [PER_TICK] not-yet-captured chunks around the player, nearest-first. */
     fun tickCapture(segmentId: Int, pcx: Int, pcz: Int, radius: Int) {
         try {
-            val world = Minecraft.getInstance().world ?: return
+            val world = Minecraft.getInstance().level ?: return
             val st = store.getOrPut(segmentId) { HashMap() }
             val cap = rollingChunkCap()  // once per tick, not per chunk attempt
             // Evict here, not only at a segment boundary. The budget was checked per capture attempt

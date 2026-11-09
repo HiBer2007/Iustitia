@@ -153,7 +153,7 @@ object AlertManager {
                     AlertFormatter.formatBatch(batch.name, parts, worstBand, windowSec, lagging, cfg.compactMode, uuid)
                 }
                 val client = Minecraft.getInstance()
-                client.execute { client.inGameHud?.chatHud?.addMessage(text) }
+                client.execute { client.gui.hud?.chatHud?.addMessage(text) }
 
                 // 6. audio cue (gated by the same mute/preset rules — a muted/preset-dropped alert
                 //    is silent too).

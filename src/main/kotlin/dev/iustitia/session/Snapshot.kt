@@ -95,9 +95,9 @@ object Snapshot {
             }
             client.execute {
                 try {
-                    client.inGameHud?.chatHud?.addMessage(Component.literal(summary))
-                    try { client.keyboard.setClipboard(summary) } catch (_: Throwable) {}
-                    if (fileFailed) client.inGameHud?.chatHud?.addMessage(Component.literal(
+                    client.gui.hud?.chatHud?.addMessage(Component.literal(summary))
+                    try { client.keyboardHandler.setClipboard(summary) } catch (_: Throwable) {}
+                    if (fileFailed) client.gui.hud?.chatHud?.addMessage(Component.literal(
                         L10n.s("iustitia.session.snapshotFileFailed")))
                 } catch (_: Throwable) {}
             }
@@ -148,7 +148,7 @@ object Snapshot {
                 try {
                     Screenshot.saveScreenshot(
                         dir, filename, fb, 1,
-                        Consumer { msg -> try { client.inGameHud?.chatHud?.addMessage(msg) } catch (_: Throwable) {} }
+                        Consumer { msg -> try { client.gui.hud?.chatHud?.addMessage(msg) } catch (_: Throwable) {} }
                     )
                 } catch (_: Throwable) {}
             }

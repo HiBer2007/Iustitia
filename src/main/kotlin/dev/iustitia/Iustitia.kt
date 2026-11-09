@@ -202,7 +202,7 @@ object Iustitia {
         try { drainDeferred() } catch (_: Throwable) {}
         try {
             val client = Minecraft.getInstance()
-            val world = client.world
+            val world = client.level
             val tracked = EntityTrackerManager.poll(world, tick)
 
             // Axis B: refresh each entity's local-freeze episode from THIS tick's deltas. After
@@ -298,16 +298,16 @@ object Iustitia {
                     else { Snapshot.capture(t.first, t.second); chat(mc, L10n.s("iustitia.session.snapshotPosted", t.second)) }
                 }
                 "transcript" -> {
-                    if (mc.currentScreen is TranscriptPanelScreen) { mc.setScreen(null); return }
+                    if (mc.gui.screen() is TranscriptPanelScreen) { mc.gui.setScreen(null); return }
                     val t = crosshairTarget()
                     if (t == null) chat(mc, L10n.s("iustitia.session.lookToTranscript"))
-                    else mc.execute { try { mc.setScreen(TranscriptPanelScreen(t.first, t.second, null)) } catch (_: Throwable) {} }
+                    else mc.execute { try { mc.gui.setScreen(TranscriptPanelScreen(t.first, t.second, null)) } catch (_: Throwable) {} }
                 }
-                "session" -> mc.execute { try { mc.setScreen(SessionScreen(mc.currentScreen)) } catch (_: Throwable) {} }
-                "keybinds" -> mc.execute { try { mc.setScreen(KeybindHubScreen(mc.currentScreen)) } catch (_: Throwable) {} }
+                "session" -> mc.execute { try { mc.gui.setScreen(SessionScreen(mc.gui.screen())) } catch (_: Throwable) {} }
+                "keybinds" -> mc.execute { try { mc.gui.setScreen(KeybindHubScreen(mc.gui.screen())) } catch (_: Throwable) {} }
                 "config" -> {
                     mc.execute {
-                        try { mc.setScreen(dev.iustitia.config.YaclScreenBuilder.build(mc.currentScreen)) }
+                        try { mc.gui.setScreen(dev.iustitia.config.YaclScreenBuilder.build(mc.gui.screen())) }
                         catch (_: Throwable) { chat(mc, L10n.s("iustitia.misc.configOpenFailed")) }
                     }
                 }

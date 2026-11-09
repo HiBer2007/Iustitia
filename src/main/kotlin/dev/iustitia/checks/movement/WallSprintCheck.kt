@@ -61,7 +61,7 @@ class WallSprintCheck : Check() {
             // usefully observable. Reset (like the chunk-unloaded branch) so a stale streak
             // can't flag on re-approach.
             if (BlockLookupBudget.beyondObserveRange(tp)) { ctx.streak = 0; return }
-            val world = Minecraft.getInstance().world
+            val world = Minecraft.getInstance().level
             val bx = Math.floor(tp.pos.x).toInt()
             val bz = Math.floor(tp.pos.z).toInt()
             if (world == null || !tp.chunkLoadedCached(world, tick, bx, bz)) { ctx.streak = 0; return }

@@ -45,7 +45,7 @@ import java.util.UUID
 @Mixin(ClientPacketListener::class)
 class ClientPlayNetworkHandlerMixin {
 
-    private fun world() = Minecraft.getInstance().world
+    private fun world() = Minecraft.getInstance().level
 
     private fun otherPlayer(id: Int): UUID? {
         val w = world() ?: return null

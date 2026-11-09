@@ -151,7 +151,7 @@ object RecordManager {
                 snaps.add(snap)
             }
             val entities = try {
-                val world = mc.world
+                val world = mc.level
                 if (world != null) ReplayBuffer.buildEntitySnaps(world, mc.player, cfg) else emptyList()
             } catch (_: Throwable) { emptyList() }
             try {
@@ -266,7 +266,7 @@ object RecordManager {
 
         val map = try { ChunkRollingCapture.snapshotForSegment(RECORD_SEGMENT_ID) } catch (_: Throwable) { null }
         val dimKey = try {
-            net.minecraft.client.Minecraft.getInstance().world?.registryKey?.value?.toString() ?: "?"
+            net.minecraft.client.Minecraft.getInstance().level?.registryKey?.value?.toString() ?: "?"
         } catch (_: Throwable) { "?" }
         if (map != null) try { map.dimension = dimKey } catch (_: Throwable) {}
 

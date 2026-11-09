@@ -53,7 +53,7 @@ class ThroughWallsCheck : Check() {
             // A passenger's eye sits inside the vehicle frame; LOS through the frame is legit,
             // so a victim riding a boat/minecart is exempt (only the attacker side was before).
             if (victim.inVehicle) return
-            val world = Minecraft.getInstance().world ?: return
+            val world = Minecraft.getInstance().level ?: return
             // Multi-point victim tolerance. A single eye→eye ray flags ANY cover between the
             // two players regardless of attacker look direction — fences, slabs and low walls
             // between meleeing players all occluded eye→eye and fired 21k FPs with 0 Polar

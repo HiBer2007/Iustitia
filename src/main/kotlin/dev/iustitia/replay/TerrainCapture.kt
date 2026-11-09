@@ -55,7 +55,7 @@ object TerrainCapture {
      * bbox / no loaded world, in which case the clip saves without terrain.
      */
     fun capture(window: ReplayBuffer.Window, focus: java.util.UUID?): TerrainSnapshot? = try {
-        val world = Minecraft.getInstance().world ?: return null
+        val world = Minecraft.getInstance().level ?: return null
         if (window.frames.isEmpty()) return null
 
         // --- 1. player-position bbox across the whole window ---

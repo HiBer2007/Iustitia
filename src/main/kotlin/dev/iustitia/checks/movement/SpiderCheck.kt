@@ -60,7 +60,7 @@ class SpiderCheck : Check() {
             // usefully observable and the per-tick block lookups are not worth it. Reset (like the
             // chunk-unloaded branch) so a stale streak can't flag on re-approach.
             if (BlockLookupBudget.beyondObserveRange(tp)) { reset(ctx); return }
-            val world = Minecraft.getInstance().world
+            val world = Minecraft.getInstance().level
             val bx = Math.floor(tp.pos.x).toInt()
             val bz = Math.floor(tp.pos.z).toInt()
             val by = Math.floor(tp.pos.y).toInt()

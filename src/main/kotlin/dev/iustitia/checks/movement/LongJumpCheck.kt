@@ -65,7 +65,7 @@ class LongJumpCheck : Check() {
                 // single-tick check can't afford to strict-flag on an unloaded chunk, per the
                 // chunk-unloaded-never-FP rule. The grounded reset below still runs.
                 var eff = cfg.threshold * SpeedMath.speedFactor(tp.speedAmplifier)
-                val world = Minecraft.getInstance().world
+                val world = Minecraft.getInstance().level
                 if (world != null) {
                     val state = WorldQueries.blockStateAt(
                         world,

@@ -38,7 +38,7 @@ object AlertFormatter {
         return try {
             val hover = buildHover(uuid, checkId, check)
             val click = ClickEvent.RunCommand("/ius hist $name")
-            base.styled { s: Style ->
+            base.withStyle { s: Style ->
                 s.withClickEvent(click).withHoverEvent(HoverEvent.ShowText(hover))
             }
         } catch (_: Throwable) {
@@ -68,7 +68,7 @@ object AlertFormatter {
             val hover = Component.empty()
                 .append(Component.literal("§7${FlagHistory.confidenceExplanation(uuid)}"))
                 .append(Component.literal(L10n.s("iustitia.alert.clickForHistory")))
-            base.styled { s: Style ->
+            base.withStyle { s: Style ->
                 s.withClickEvent(ClickEvent.RunCommand("/ius hist $name")).withHoverEvent(HoverEvent.ShowText(hover))
             }
         } catch (_: Throwable) { base }
@@ -81,7 +81,7 @@ object AlertFormatter {
         val raw = L10n.s("iustitia.alert.compactLine", name, sev, check, count)
         val base = Component.literal(raw)
         return try {
-            base.styled { s: Style -> s.withClickEvent(ClickEvent.RunCommand("/ius hist $name")) }
+            base.withStyle { s: Style -> s.withClickEvent(ClickEvent.RunCommand("/ius hist $name")) }
         } catch (_: Throwable) { base }
     }
 

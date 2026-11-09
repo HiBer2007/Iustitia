@@ -104,7 +104,7 @@ class NoFallDamageCheck : Check() {
 
     /** True if the tracked player's main hand holds a mace (1.21+); auto-fail-open pre-1.21. */
     private fun isMaceHeld(tp: TrackedPlayer): Boolean = try {
-        tp.entity?.mainHandStack?.item is MaceItem
+        tp.entity?.mainHandItem?.item is MaceItem
     } catch (_: Throwable) {
         false
     }
@@ -129,7 +129,7 @@ class NoFallDamageCheck : Check() {
             if (tick - EntityTrackerManager.lastServerLagTick <= LagWindows.LAG_WINDOW ||
                 tick - EntityTrackerManager.lastLagBurstTick <= LagWindows.BURST_WINDOW
             ) return
-            val world = Minecraft.getInstance().world ?: return
+            val world = Minecraft.getInstance().level ?: return
             val ctx = contextOf(tp.uuid) as NoFallContext
             val dy = tp.deltaY
             // Math.floor, not toInt(): Double.toInt() truncates toward zero, picking the wrong
@@ -246,8 +246,8 @@ class NoFallDamageCheck : Check() {
     }
 
     private fun isSoftLand(state: net.minecraft.world.level.block.state.BlockState): Boolean = try {
-        state.isOf(Blocks.WATER) || state.isOf(Blocks.SLIME_BLOCK) ||
-            state.isOf(Blocks.HAY_BLOCK) || state.isOf(Blocks.COBWEB)
+        state.`is`(Blocks.WATER) || state.`is`(Blocks.SLIME_BLOCK) ||
+            state.`is`(Blocks.HAY_BLOCK) || state.`is`(Blocks.COBWEB)
     } catch (_: Throwable) {
         false
     }

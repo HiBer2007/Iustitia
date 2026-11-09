@@ -368,7 +368,7 @@ class FlyEnvelopeCheck : Check() {
     }
 
     private fun isOnClimbable(tp: TrackedPlayer): Boolean = try {
-        val world = Minecraft.getInstance().world ?: return false
+        val world = Minecraft.getInstance().level ?: return false
         val bx = Math.floor(tp.pos.x).toInt()
         val bz = Math.floor(tp.pos.z).toInt()
         val by = Math.floor(tp.pos.y).toInt()
@@ -403,7 +403,7 @@ class FlyEnvelopeCheck : Check() {
         if (abs(tp.deltaY) >= 0.01) {
             false
         } else {
-            val world = Minecraft.getInstance().world
+            val world = Minecraft.getInstance().level
             world != null && WorldQueries.isSolidBelowFootprint(world, tp.pos.x, tp.pos.y, tp.pos.z, 0.05)
         }
     } catch (_: Throwable) {
@@ -411,7 +411,7 @@ class FlyEnvelopeCheck : Check() {
     }
 
     private fun hasBlockAbove(tp: TrackedPlayer): Boolean = try {
-        val world = Minecraft.getInstance().world ?: return false
+        val world = Minecraft.getInstance().level ?: return false
         // Math.floor, not toInt(): truncation toward zero picks the wrong column at negative
         // coords (a ceiling above a player at x=-0.4 would be sampled at column 0, not -1).
         val bx = Math.floor(tp.pos.x).toInt()

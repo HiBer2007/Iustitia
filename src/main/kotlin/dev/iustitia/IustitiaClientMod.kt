@@ -151,8 +151,8 @@ class IustitiaClientMod : ClientModInitializer {
             try {
                 if (!ConfigManager.config.wizardCompleted) {
                     val mc = net.minecraft.client.Minecraft.getInstance()
-                    if (mc.currentScreen == null && mc.world != null && mc.player != null) {
-                        mc.execute { try { mc.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
+                    if (mc.gui.screen() == null && mc.level != null && mc.player != null) {
+                        mc.execute { try { mc.gui.setScreen(SetupWizardScreen(null)) } catch (_: Throwable) {} }
                     }
                 }
             } catch (_: Throwable) {}

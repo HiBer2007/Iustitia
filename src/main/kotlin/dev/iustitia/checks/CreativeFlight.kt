@@ -61,7 +61,7 @@ object CreativeFlight {
 
     /** Server-sent tab-list game mode, or null when unknown (fail-open to checking). */
     fun gameModeOf(uuid: UUID): GameType? = try {
-        Minecraft.getInstance().networkHandler?.getPlayerListEntry(uuid)?.gameMode
+        Minecraft.getInstance().getConnection()?.getPlayerListEntry(uuid)?.gameMode
     } catch (_: Throwable) {
         null
     }

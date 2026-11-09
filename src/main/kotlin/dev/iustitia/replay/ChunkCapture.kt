@@ -51,7 +51,7 @@ object ChunkCapture {
      */
     fun capture(radius: Int): ChunkSnapshot? = try {
         val mc = Minecraft.getInstance()
-        val world = mc.world ?: return null
+        val world = mc.level ?: return null
         val player = mc.player ?: return null
         val r = radius.coerceIn(1, 32)
         // Player chunk coords (floor-div handles negatives correctly; `x.toInt() shr 4` would round
