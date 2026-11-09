@@ -1,376 +1,67 @@
 package dev.iustitia.render
 
-import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.client.Minecraft
-import net.minecraft.client.gui.Font
-import net.minecraft.client.model.Model
-import net.minecraft.client.model.geom.ModelPart
-import net.minecraft.client.renderer.ItemBlockRenderTypes
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.texture.OverlayTexture
-import net.minecraft.client.renderer.rendertype.RenderType
-import net.minecraft.client.renderer.rendertype.RenderTypes
-import net.minecraft.client.renderer.Sheets
-import com.mojang.blaze3d.vertex.VertexConsumer
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.block.ModelBlockRenderer
-import net.minecraft.client.renderer.block.MovingBlockRenderState
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer
-import net.minecraft.client.renderer.SubmitNodeCollector
-import net.minecraft.client.renderer.OrderedSubmitNodeCollector
-import net.minecraft.client.renderer.entity.state.EntityRenderState
-import net.minecraft.client.renderer.item.ItemStackRenderState
-import net.minecraft.client.renderer.entity.ItemRenderer
-import net.minecraft.client.renderer.block.model.BakedQuad
-import net.minecraft.client.renderer.block.model.BlockStateModel
-import net.minecraft.client.resources.model.ModelBakery
-import net.minecraft.client.renderer.state.CameraRenderState
-import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.world.item.ItemDisplayContext
-import net.minecraft.util.FormattedCharSequence
-import net.minecraft.network.chat.Component
-import net.minecraft.util.CommonColors
-import net.minecraft.resources.Identifier
-import net.minecraft.world.phys.AABB
-import net.minecraft.util.ARGB
-import net.minecraft.util.Mth
-import net.minecraft.world.phys.Vec3
-import net.minecraft.util.RandomSource
-import org.joml.Matrix4f
-import org.joml.Quaternionf
-import org.joml.Vector3f
+import com.mojang.blaze3d.vertex.QuadInstance
+import com.mojang.blaze3d.vertex.VertexConsumer
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.texture.OverlayTexture
 
 /**
- * A minimal [OrderedRenderCommandQueue] that emits model/vertex work **immediately** into a plain
- * [VertexConsumerProvider] instead of feeding vanilla's deferred multi-pass entity queue.
+ * Emits one render type's baked chunk quads into a [VertexConsumer] **immediately**, as the body of a
+ * [SubmitNodeCollector.submitCustomGeometry] node.
  *
  * ## Why this exists
  *
- * The replay/clip ghost renderer draws during `WorldRenderEvents.AFTER_ENTITIES`, where the entity-pass
- * command queue is the batched one — it can't be driven for a fabricated entity that doesn't exist in
- * the world. Player ghosts sidestep this by rendering their model straight onto the overlay's
- * [VertexConsumerProvider] (see [ReplayRenderer.drawModel]). Non-living entity ghosts (boats, minecarts)
- * can't: their `EntityRenderer.render` callback is handed an [OrderedRenderCommandQueue] and only knows
- * how to submit into it. This class bridges the two — it accepts the submissions and writes each one
- * into the [VertexConsumerProvider] buffer for that render layer right away (the same layer the vanilla
- * entity pass would have filled).
+ * On 1.21.11 this class was a bridge: the world overlay's `MultiBufferSource` was the only vertex sink
+ * available, so entity renderers that only know how to submit into an `OrderedRenderCommandQueue`
+ * (boats/minecarts) were drained straight into a `VertexConsumerProvider` by a hand-rolled
+ * `SubmitNodeCollector` implementation. On 26.3 that whole bridge is unnecessary — the level render
+ * context hands us the real [SubmitNodeCollector] — so the class was repurposed for the one place a
+ * direct vertex emission is still the right tool: the clip's captured chunk world.
  *
- * ## What each submit does
+ * [ChunkWorldRenderer] bakes each chunk into [ChunkMesher.BlockQuads] once and, per frame, submits one
+ * custom-geometry node per render type. This object is that node's body: for every baked block it
+ * translates the captured [PoseStack.Pose] to the block's absolute recorded coord and pushes each
+ * [net.minecraft.client.resources.model.geometry.BakedQuad] through [VertexConsumer.putBakedQuad] with
+ * the block's tint applied per tint index — exactly the per-block loop vanilla's
+ * `BlockModelFeatureRenderer` runs for block models, just over our pre-baked quad lists.
  *
- * Each submission replays the corresponding drain step from vanilla's command renderers
- * (`LabelCommandRenderer`, `FireCommandRenderer`, `LeashCommandRenderer`, …) inline instead of
- * queueing it — so nametags, fire, leashes, item frames, shadows, text and model parts submitted by a
- * non-living ghost's renderer actually draw. The one genuine exception is
- * [submitCustom]([OrderedRenderCommandQueue.LayeredCustom]): that path renders through its own GPU
- * `RenderPass` against the particles framebuffers (`LayeredCustomCommandRenderer`), not through a
- * [VertexConsumerProvider] — it cannot be bridged and no entity renderer submits into it, so it stays
- * a documented no-op.
+ * Ordering/layering is a property of the render type the node was submitted with (the collector files
+ * blending layers into the translucent phase and lets the pipeline sort them). Everything is fail-open:
+ * an emission error drops that layer's geometry for the frame and never crashes the client.
  *
- * Ordering/layering is therefore best-effort (each submission flushes into its layer's buffer in call
- * order, no batching/pass split), which is fine for a replay overlay drawn on top of the captured world.
- * Everything is fail-open: a submission error is swallowed so one bad entity never kills the frame.
- *
- * Ported from SnapClip's `dev.snapclip.render.ImmediateRenderQueue` (empty submits filled in from
- * the vanilla drain bodies).
+ * Render-thread only: [render] runs while the frame's feature geometry is being built.
  */
-class ImmediateRenderQueue(private var vcp: MultiBufferSource) : SubmitNodeCollector {
+class ImmediateRenderQueue(
+    /** The baked blocks of one render type, already face-culled and tint-resolved. */
+    private val blocks: List<ChunkMesher.BlockQuads>,
+) : SubmitNodeCollector.CustomGeometryRenderer {
 
-    /** Re-bind the frame's [VertexConsumerProvider] so one instance can be reused across frames
-     *  (render thread only) instead of allocating per ghost per frame. */
-    fun bind(vcp: MultiBufferSource) {
-        this.vcp = vcp
-    }
+    /** Reused vertex scratch: one instance per node, so one per layer per frame (render thread only). */
+    private val quadInstance = QuadInstance()
 
-    private val client: Minecraft? get() = try { Minecraft.getInstance() } catch (_: Throwable) { null }
+    /** True when any geometry was emitted (diagnostics only; the renderer ignores it). */
+    var emitted: Boolean = false
+        private set
 
-    override fun <S> submitModel(
-        model: Model<in S>,
-        state: S,
-        matrices: PoseStack,
-        layer: RenderType,
-        light: Int,
-        overlay: Int,
-        tintedColor: Int,
-        sprite: TextureAtlasSprite?,
-        outlineColor: Int,
-        crumbling: ModelFeatureRenderer.CrumblingOverlayCommand?,
-    ) {
+    override fun render(pose: PoseStack.Pose, buffer: VertexConsumer) {
         try {
-            // Vanilla drain (ModelCommandRenderer): setAngles, sprite-aware consumer, tintedColor.
-            // Outline color + crumbling are not drawn — a ghost overlay has no outline pass and
-            // fabricated entities never mine blocks.
-            model.setAngles(state)
-            val base = vcp.getBuffer(layer)
-            val consumer = sprite?.getTextureSpecificVertexConsumer(base) ?: base
-            model.render(matrices, consumer, light, overlay, tintedColor)
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitCustom(
-        matrices: PoseStack,
-        layer: RenderType,
-        custom: SubmitNodeCollector.Custom,
-    ) {
-        try {
-            custom.render(matrices.peek(), vcp.getBuffer(layer))
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitShadowPieces(matrices: PoseStack, shadowRadius: Float, shadowPieces: List<EntityRenderState.ShadowPiece>) {
-        // Vanilla drain (ShadowPiecesCommandRenderer): one flat quad per piece on the shared shadow layer.
-        try {
-            val consumer = vcp.getBuffer(SHADOW_LAYER)
-            val matrix = matrices.peek().positionMatrix
-            for (piece in shadowPieces) {
-                val box: AABB = piece.shapeBelow.boundingBox
-                val minX = piece.relativeX + box.minX.toFloat()
-                val maxX = piece.relativeX + box.maxX.toFloat()
-                val y = piece.relativeY + box.minY.toFloat()
-                val minZ = piece.relativeZ + box.minZ.toFloat()
-                val maxZ = piece.relativeZ + box.maxZ.toFloat()
-                val r = shadowRadius
-                val u0 = -minX / 2.0f / r + 0.5f
-                val u1 = -maxX / 2.0f / r + 0.5f
-                val v0 = -minZ / 2.0f / r + 0.5f
-                val v1 = -maxZ / 2.0f / r + 0.5f
-                val color = ARGB.getWhite(piece.alpha)
-                shadowVertex(matrix, consumer, color, minX, y, minZ, u0, v0)
-                shadowVertex(matrix, consumer, color, minX, y, maxZ, u0, v1)
-                shadowVertex(matrix, consumer, color, maxX, y, maxZ, u1, v1)
-                shadowVertex(matrix, consumer, color, maxX, y, minZ, u1, v0)
-            }
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun shadowVertex(matrix: Matrix4f, consumer: VertexConsumer, color: Int, x: Float, y: Float, z: Float, u: Float, v: Float) {
-        val pos = matrix.transformPosition(x, y, z, Vector3f())
-        consumer.vertex(pos.x, pos.y, pos.z, color, u, v, OverlayTexture.DEFAULT_UV, LightTexture.MAX_LIGHT_COORDINATE, 0.0f, 1.0f, 0.0f)
-    }
-
-    override fun submitLabel(
-        matrices: PoseStack, nameLabelPos: Vec3?, y: Int, label: Component, notSneaking: Boolean,
-        light: Int, squaredDistanceToCamera: Double, cameraState: CameraRenderState,
-    ) {
-        // Vanilla drain (LabelCommandRenderer.Commands.add + render): transform at submit time, then
-        // a SEE_THROUGH pass (optionally) + a NORMAL pass. `squaredDistanceToCamera` only orders the
-        // batched see-through pass — irrelevant in call order.
-        if (nameLabelPos == null) return
-        try {
-            val mc = client ?: return
-            val tr = mc.textRenderer
-            matrices.push()
-            matrices.translate(nameLabelPos.x, nameLabelPos.y + 0.5, nameLabelPos.z)
-            matrices.multiply(cameraState.orientation)
-            matrices.scale(0.025f, -0.025f, 0.025f)
-            val x = -tr.getWidth(label) / 2.0f
-            val bg = (mc.options.getTextBackgroundOpacity(0.25f) * 255.0f).toInt() shl 24
-            val matrix = matrices.peek().positionMatrix
-            if (notSneaking) {
-                // see-through copy so the nametag is readable through the ghost's own body
-                tr.draw(label, x, y.toFloat(), -2130706433, false, matrix, vcp, Font.TextLayerType.SEE_THROUGH, bg, light)
-                tr.draw(label, x, y.toFloat(), -1, false, matrix, vcp, Font.TextLayerType.NORMAL, 0, LightTexture.applyEmission(light, 2))
-            } else {
-                tr.draw(label, x, y.toFloat(), -2130706433, false, matrix, vcp, Font.TextLayerType.NORMAL, bg, light)
-            }
-            matrices.pop()
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitText(
-        matrices: PoseStack, x: Float, y: Float, text: FormattedCharSequence, dropShadow: Boolean,
-        layerType: Font.TextLayerType, light: Int, color: Int, backgroundColor: Int, outlineColor: Int,
-    ) {
-        // Vanilla drain (TextCommandRenderer).
-        try {
-            val tr = client?.textRenderer ?: return
-            if (outlineColor == 0) {
-                tr.draw(text, x, y, color, dropShadow, matrices.peek().positionMatrix, vcp, layerType, backgroundColor, light)
-            } else {
-                tr.drawWithOutline(text, x, y, color, outlineColor, matrices.peek().positionMatrix, vcp, light)
-            }
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitFire(matrices: PoseStack, state: EntityRenderState, rotation: Quaternionf) {
-        // Vanilla drain (FireCommandRenderer): stacked shrinking billboard slices on the cutout layer.
-        // It MUTATES the entry (scale/rotate/translate) — work on a copy, not the caller's live stack.
-        try {
-            val mc = client ?: return
-            val atlas = mc.atlasManager
-            val sprite0 = atlas.getSprite(ModelBakery.FIRE_0)
-            val sprite1 = atlas.getSprite(ModelBakery.FIRE_1)
-            val entry = matrices.peek().copy()
-            val f = state.width * 1.4f
-            entry.scale(f, f, f)
-            var halfWidth = 0.5f
-            var yOffset = 0.0f
-            var height = state.height / f
-            var zOff = 0.0f
-            var slice = 0
-            entry.rotate(rotation)
-            entry.translate(0.0f, 0.0f, 0.3f - height.toInt() * 0.02f)
-            val consumer = vcp.getBuffer(Sheets.getEntityCutout())
-            while (height > 0.0f) {
-                val s = if (slice % 2 == 0) sprite0 else sprite1
-                var uMin = s.minU
-                val vMin = s.minV
-                var uMax = s.maxU
-                val vMax = s.maxV
-                if (slice / 2 % 2 == 0) {
-                    val t = uMax; uMax = uMin; uMin = t
+            quadInstance.setLightCoords(ChunkMesher.FULL_LIGHT)
+            quadInstance.setOverlayCoords(OverlayTexture.NO_OVERLAY)
+            val scratch = pose.copy()
+            for (b in blocks) {
+                scratch.set(pose)
+                scratch.translate(b.x.toFloat(), b.y.toFloat(), b.z.toFloat())
+                val tints = b.tints
+                for (q in b.quads) {
+                    val tintIndex = try { q.materialInfo().tintIndex() } catch (_: Throwable) { -1 }
+                    quadInstance.setColor(if (tintIndex >= 0 && tintIndex < tints.size) tints[tintIndex] else -1)
+                    buffer.putBakedQuad(scratch, q, quadInstance)
                 }
-                fireVertex(entry, consumer, -halfWidth, -yOffset, zOff, uMax, vMax)
-                fireVertex(entry, consumer, halfWidth, -yOffset, zOff, uMin, vMax)
-                fireVertex(entry, consumer, halfWidth, 1.4f - yOffset, zOff, uMin, vMin)
-                fireVertex(entry, consumer, -halfWidth, 1.4f - yOffset, zOff, uMax, vMin)
-                height -= 0.45f
-                yOffset -= 0.45f
-                halfWidth *= 0.9f
-                zOff -= 0.03f
-                slice++
             }
+            emitted = true
         } catch (_: Throwable) {
+            // fail-open: this layer's chunk-world geometry drops for the frame
         }
-    }
-
-    private fun fireVertex(entry: PoseStack.Entry, consumer: VertexConsumer, x: Float, y: Float, z: Float, u: Float, v: Float) {
-        consumer.vertex(entry, x, y, z)
-            .color(CommonColors.WHITE)
-            .texture(u, v)
-            .overlay(0, 10)
-            .light(LightTexture.MAX_BLOCK_LIGHT_COORDINATE)
-            .normal(entry, 0.0f, 1.0f, 0.0f)
-    }
-
-    override fun submitLeash(matrices: PoseStack, leashData: EntityRenderState.LeashData) {
-        // Vanilla drain (LeashCommandRenderer): 24-segment two-sided ribbon with a slack bezier.
-        try {
-            val dx = (leashData.endPos.x - leashData.startPos.x).toFloat()
-            val dy = (leashData.endPos.y - leashData.startPos.y).toFloat()
-            val dz = (leashData.endPos.z - leashData.startPos.z).toFloat()
-            val invSqrt = Mth.inverseSqrt(dx * dx + dz * dz) * 0.05f / 2.0f
-            val perpX = dz * invSqrt
-            val perpZ = dx * invSqrt
-            val matrix = Matrix4f(matrices.peek().positionMatrix)
-            matrix.translate(leashData.offset.x.toFloat(), leashData.offset.y.toFloat(), leashData.offset.z.toFloat())
-            val consumer = vcp.getBuffer(RenderTypes.leash())
-            for (i in 0..LEASH_SEGMENTS) leashVertex(consumer, matrix, dx, dy, dz, LEASH_WIDTH, perpX, perpZ, i, false, leashData)
-            for (i in LEASH_SEGMENTS downTo 0) leashVertex(consumer, matrix, dx, dy, dz, 0.0f, perpX, perpZ, i, true, leashData)
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun leashVertex(
-        consumer: VertexConsumer, matrix: Matrix4f, dx: Float, dy: Float, dz: Float,
-        yOff: Float, sideOff: Float, perpOff: Float, segment: Int, backside: Boolean,
-        data: EntityRenderState.LeashData,
-    ) {
-        val f = segment / LEASH_SEGMENTS.toFloat()
-        val blockLight = Mth.lerp(f, data.leashedEntityBlockLight.toFloat(), data.leashHolderBlockLight.toFloat()).toInt()
-        val skyLight = Mth.lerp(f, data.leashedEntitySkyLight.toFloat(), data.leashHolderSkyLight.toFloat()).toInt()
-        val light = LightTexture.pack(blockLight, skyLight)
-        val shade = if (segment % 2 == (if (backside) 1 else 0)) 0.7f else 1.0f
-        val r = 0.5f * shade
-        val g = 0.4f * shade
-        val b = 0.3f * shade
-        val x = dx * f
-        val y = if (data.slack) {
-            if (dy > 0.0f) dy * f * f else dy - dy * (1.0f - f) * (1.0f - f)
-        } else {
-            dy * f
-        }
-        val z = dz * f
-        consumer.vertex(matrix, x - sideOff, y + yOff, z + perpOff).color(r, g, b, 1.0f).light(light)
-        consumer.vertex(matrix, x + sideOff, y + 0.05f - yOff, z - perpOff).color(r, g, b, 1.0f).light(light)
-    }
-
-    override fun submitModelPart(
-        part: ModelPart, matrices: PoseStack, renderLayer: RenderType, light: Int, overlay: Int,
-        sprite: TextureAtlasSprite?, sheeted: Boolean, hasGlint: Boolean, tintedColor: Int,
-        crumblingOverlay: ModelFeatureRenderer.CrumblingOverlayCommand?, i: Int,
-    ) {
-        // Vanilla drain (ModelPartCommandRenderer): glint/sprite-aware consumer, then part.render.
-        // `i` is batch-sort bookkeeping in vanilla and unused at drain time; crumbling is ghost-irrelevant.
-        try {
-            val base = vcp.getBuffer(renderLayer)
-            val consumer = when {
-                sprite != null && hasGlint ->
-                    sprite.getTextureSpecificVertexConsumer(ItemRenderer.getItemGlintConsumer(vcp, renderLayer, sheeted, true))
-                sprite != null -> sprite.getTextureSpecificVertexConsumer(base)
-                hasGlint -> ItemRenderer.getItemGlintConsumer(vcp, renderLayer, sheeted, true)
-                else -> base
-            }
-            part.render(matrices, consumer, light, overlay, tintedColor)
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitBlock(matrices: PoseStack, state: BlockState, light: Int, overlay: Int, outlineColor: Int) {
-        // Vanilla drain (FallingBlockCommandRenderer): block-entity model via BlockRenderManager.
-        try {
-            client?.blockRenderManager?.renderBlockAsEntity(state, matrices, vcp, light, overlay)
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitMovingBlock(matrices: PoseStack, state: MovingBlockRenderState) {
-        // Vanilla drain (FallingBlockCommandRenderer): the moving block's model parts on the moving-block layer.
-        try {
-            val mc = client ?: return
-            val brm = mc.blockRenderManager
-            val parts = brm.getModel(state.blockState)
-                .getParts(RandomSource.create(state.blockState.getRenderingSeed(state.fallingBlockPos)))
-            brm.modelRenderer.render(
-                state, parts, state.blockState, state.entityBlockPos, matrices,
-                vcp.getBuffer(ItemBlockRenderTypes.getMovingBlockLayer(state.blockState)),
-                false, OverlayTexture.DEFAULT_UV,
-            )
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitBlockStateModel(
-        matrices: PoseStack, layer: RenderType, model: BlockStateModel, r: Float, g: Float, b: Float,
-        light: Int, overlay: Int, outlineColor: Int,
-    ) {
-        // Vanilla drain (FallingBlockCommandRenderer): flat BlockStateModel render.
-        try {
-            ModelBlockRenderer.render(matrices.peek(), vcp.getBuffer(layer), model, r, g, b, light, overlay)
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitItem(
-        matrices: PoseStack, displayContext: ItemDisplayContext, light: Int, overlay: Int,
-        outlineColors: Int, tintLayers: IntArray, quads: List<BakedQuad>, renderLayer: RenderType,
-        glintType: ItemStackRenderState.Glint,
-    ) {
-        // Vanilla drain (ItemCommandRenderer): quads straight through ItemRenderer.renderItem. The
-        // outline second pass needs an OutlineVertexConsumerProvider the overlay doesn't have — skipped.
-        try {
-            ItemRenderer.renderItem(displayContext, matrices, vcp, light, overlay, tintLayers, quads, renderLayer, glintType)
-        } catch (_: Throwable) {
-        }
-    }
-
-    override fun submitCustom(custom: SubmitNodeCollector.LayeredCustom) {
-        // Deliberate no-op: the LayeredCustom path renders through its own GPU RenderPass against the
-        // particles framebuffers (LayeredCustomCommandRenderer), not through a VertexConsumerProvider —
-        // it cannot be bridged into this queue, and no entity renderer submits into it (particles only).
-    }
-
-    override fun getBatchingQueue(priority: Int): OrderedSubmitNodeCollector = this
-
-    private companion object {
-        const val LEASH_SEGMENTS = 24
-        const val LEASH_WIDTH = 0.05f
-        val SHADOW_LAYER: RenderType =
-            RenderTypes.entityShadow(Identifier.ofVanilla("textures/misc/shadow.png"))
     }
 }

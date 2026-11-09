@@ -14,9 +14,10 @@ import java.util.UUID
  * - The [dev.iustitia.mixin.CameraMixin] `Camera.update` TAIL inject runs on the **render thread**;
  *   it consumes [pending] (sets it to null) and, if the offender entity is loaded, repoints the
  *   camera at the offender and stashes the request in [activeReq] + raises [frameActive].
- * - [dev.iustitia.render.SelfieRenderer] registers `WorldRenderEvents.END_MAIN`, which fires on the
+ * - [dev.iustitia.render.SelfieRenderer] registers `LevelRenderEvents.END_MAIN` (26.3's replacement
+ *   for the removed `WorldRenderEvents.END_MAIN`), which fires on the
  *   render thread at the END of the SAME frame's world render; it reads [activeReq]/[frameActive],
- *   screenshots the main framebuffer, then clears both.
+ *   screenshots the main render target, then clears both.
  *
  * Because [pending] is consumed in exactly one `Camera.update` call, the camera is overridden for
  * **one frame only** — vanilla `Camera.update` re-derives pos/rotation from the local player

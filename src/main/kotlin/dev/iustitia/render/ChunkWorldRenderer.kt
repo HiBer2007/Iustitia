@@ -1,23 +1,12 @@
 package dev.iustitia.render
 
-import com.mojang.blaze3d.systems.RenderSystem
-import com.mojang.blaze3d.textures.AddressMode
-import com.mojang.blaze3d.textures.FilterMode
-import com.mojang.blaze3d.vertex.VertexFormat
+import com.mojang.blaze3d.vertex.PoseStack
 import dev.iustitia.config.ConfigManager
 import dev.iustitia.replay.ReplayState
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.texture.OverlayTexture
+import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.rendertype.RenderType
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.texture.TextureAtlas
-import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.world.phys.Vec3
-import org.joml.Matrix4f
-import org.joml.Vector3f
-import org.joml.Vector4f
-import java.util.OptionalDouble
-import java.util.OptionalInt
 
 /**
  * Draws the active clip's captured chunk world as **solid, textured blocks** (the real map) each
@@ -27,37 +16,29 @@ import java.util.OptionalInt
  * would draw — buried faces are dropped at bake time, and `getQuads(null)` general quads are kept so
  * non-cube blocks don't get holes).
  *
- * ## C2 — static GPU mesh (the v1.3.0 perf rework)
+ * ## 26.3 geometry submission (the static-GPU-mesh path is gone)
  *
- * Each chunk's quads are baked ONCE into a static GPU vertex buffer (`GpuBuffer`) at bake time
- * ([ChunkMesher.bakeStatic]) — in the layer's vertex format (`POSITION_COLOR_TEXTURE_OVERLAY_LIGHT_NORMAL`,
- * `DrawMode.QUADS`), with **absolute recorded coords** already baked into the vertices. Each frame
- * the renderer draws every in-range baked chunk via **one `RenderPass` per RenderLayer** (at most two
- * layers: `entityCutout` + `blockTranslucentCull`), binding one model-view matrix (`matrices.peek()`,
- * the camera rotation × the shared origin translate) as the `"DynamicTransforms"` uniform and the
- * shared sequential quad index buffer. No per-frame per-vertex emission, no per-frame re-upload —
- * the ~90% `class_287.method_22919` emission + ~28% `nglNamedBufferSubData` upload that dominated the
- * `/ius debugfps` profile (95% of the iustitia frame) are gone; the per-frame cost is a handful of
- * `setVertexBuffer` + `drawIndexed` calls.
+ * 1.21.11's optimised path baked each chunk into a static `GpuBuffer` and drew it with its own
+ * `RenderPass` + `"DynamicTransforms"` uniform. 26.3 replaced the immediate `RenderSystem`/`RenderPass`
+ * backend those calls relied on (`com.mojang.blaze3d.systems.RenderSystem` no longer hands out a
+ * device/encoder, `RenderType` no longer exposes a render pipeline, and vertex buffers are owned by the
+ * frame's staged geometry), so re-creating that path would mean re-implementing the terrain pipeline
+ * rather than using the game's. The replay world therefore goes through the supported extension point:
+ * **one [SubmitNodeCollector.submitCustomGeometry] node per [RenderType] per frame**, whose body
+ * ([ImmediateRenderQueue]) emits the pre-baked quads with [com.mojang.blaze3d.vertex.VertexConsumer.putBakedQuad].
+ * The bake (face culling, model resolution, tint) is unchanged and still happens once per chunk — only
+ * the per-frame vertex write moved from "one indexed draw call" to "one emission pass", i.e. exactly the
+ * cost of the old fail-open fallback. **Behaviour on screen is identical; only the static buffer's FPS
+ * win is lost** (documented approximation).
  *
- * **Matrix semantics:** `RenderSystem.bindDefaultUniforms(pass)` binds `Projection`/`Fog`/`Globals`/
- * `Lighting` but NOT a model-view; the pipeline shader's sole model-view is `"DynamicTransforms"` (the
- * entity/Immediate path sets it to `RenderSystem.getModelViewMatrix()`, which is identity at
- * `AFTER_ENTITIES` while `ctx.matrices()` carries the full camera+origin transform). So we bake raw
- * recorded coords and bind `DynamicTransforms = matrices.peek().getPositionMatrix()` →
- * `Projection × matrices.peek() × rawVert`, identical to the old `Projection × (matrices.peek() × rawVert)`
- * per-vertex bake.
+ * **Matrix semantics:** the node's pose is `matrices.last()` — the camera-relative origin translate
+ * pushed by [ReplayRenderer] — and [ImmediateRenderQueue] translates a *copy* of it per block by the
+ * block's absolute recorded coord, so vertices land at `recorded - camPos + offset`, the same frame as
+ * the ghosts. (The old static path bound `getModelView × matrices.peek()` as a uniform; the
+ * custom-geometry path applies the whole pose per vertex instead, which is equivalent.)
  *
- * **Fail-open:** the whole static-draw path is wrapped in a try/catch; any throw (no device,
- * framebuffer/texture not ready, a GL error) falls back to [emitQuads] — the old per-block `vc.quad`
- * emit via the shared world `VertexConsumerProvider` — for every collected chunk that frame. So a C2
- * error never crashes the client and the world keeps rendering (just without the FPS win). The
- * `byLayer` `BlockQuads` the fallback needs are kept on [ChunkMesher.ChunkBlocks] for exactly this.
- *
- * **Framebuffer target (runtime-verify):** the `RenderPass` targets `MinecraftClient.getFramebuffer()`
- * — the standard Fabric overlay-render target at `AFTER_ENTITIES`. This is the one piece the build
- * can't verify; if live testing shows blocks missing / wrong depth (wrong target), the fail-open keeps
- * them visible via [emitQuads] while the target is iterated. See the C2 plan.
+ * **Fail-open:** the whole path is wrapped in a try/catch per layer; any throw skips that layer for the
+ * frame so a chunk-world error never crashes the client (ghosts + live render continue).
  *
  * ## Per-chunk render-distance cull + lazy progressive baking (unchanged)
  *
@@ -78,15 +59,9 @@ import java.util.OptionalInt
  *
  * No-op unless `ReplayState.active && ReplayState.chunks != null` — so a wireframe-terrain clip
  * (`chunks == null`) and a plain `/ius replay` are unaffected; the live world is only hidden by
- * [dev.iustitia.mixin.SectionRenderStateMixin] when `chunks != null` too. [free] drops the mesher cache
- * (closing the static `GpuBuffer`s).
+ * [dev.iustitia.mixin.SectionRenderStateMixin] when `chunks != null` too. [free] drops the mesher cache.
  */
 object ChunkWorldRenderer {
-
-    /** Fullbright light coord (LightmapTextureManager.MAX_LIGHT_COORDINATE = 0xF000F0) — replays don't
-     *  need real AO/skylight; flat-lit solid blocks read clearly. Baked into the static buffer at bake
-     *  time, and used by the [emitQuads] fallback. */
-    private const val FULL_LIGHT = 0xF000F0
 
     /**
      * Per-frame lazy-bake budget in **surface-block count**. Each frame we bake the nearest unbaked
@@ -98,40 +73,24 @@ object ChunkWorldRenderer {
      */
     private const val LAZY_BAKE_BLOCK_BUDGET = 3000
 
-    /** Name supplier for the static-draw `RenderPass` (mirrors vanilla's pass-naming convention). */
-    private val passName: java.util.function.Supplier<String> =
-        java.util.function.Supplier<String> { "iustitia-chunkworld" }
-
-    /** Reused per-frame collections — render thread only ([render]/[drawStaticAll] run there and both
-     *  are cleared at frame start, so leftovers from a failed frame can't leak into the next one). */
+    /** Reused per-frame collection — render thread only ([render] runs there and it is cleared at
+     *  frame start, so leftovers from a failed frame can't leak into the next one). */
     private val collectedChunks = ArrayList<ChunkMesher.ChunkBlocks>()
-    private val staticByLayer = HashMap<RenderType, ArrayList<ChunkMesher.StaticChunkLayer>>()
-
-    // Reused joml args for the per-frame DynamicTransforms uniform write (DynamicUniforms.write copies
-    // the values synchronously, so reuse is safe — no per-frame allocation).
-    private val COLOR_MOD = Vector4f(1f, 1f, 1f, 1f)
-    private val MODEL_OFFSET = Vector3f()
-    private val TEX_IDENTITY = Matrix4f()
-    /** Scratch for the per-frame model-view (= getModelView × the stack's position matrix).
-     *  `Matrix4f.mul(right, dest)` overwrites `dest` outright rather than accumulating, and nothing
-     *  holds the reference past the `write` that copies it, so one instance serves every frame. */
-    private val MODEL_VIEW = Matrix4f()
 
     /**
      * Draw the clip's chunk world. [matrices] is already translated by the shared origin translate
-     * (`-camPos + relocOffset`) in [dev.iustitia.render.ReplayRenderer.drawGhosts]; the static-draw
-     * path binds `matrices.peek().getPositionMatrix()` (that same transform) as the model-view uniform,
-     * and the [emitQuads] fallback translates each block to its absolute recorded coord on top of it.
-     * Both land at `recorded - camPos + offset` — same frame as the ghosts, so the world + ghosts move
-     * together. [camPos] is the live camera world pos; [relocOffset] the clip relocation.
+     * (`-camPos + relocOffset`) in [dev.iustitia.render.ReplayRenderer.drawGhosts]; each layer's
+     * custom-geometry node captures that pose and [ImmediateRenderQueue] offsets it per block to the
+     * block's absolute recorded coord, so the world lands at `recorded - camPos + offset` — the same
+     * frame as the ghosts. [camPos] is the live camera world pos; [relocOffset] the clip relocation.
      *
      * Each frame: snapshot-key the mesher, compute the recorded-space camera chunk, then walk the
      * in-range chunk coords nearest-first (chebyshev rings outward from the camera chunk), applying
      * the behind-camera cull + lazy bake and **collecting** the in-range baked chunks. After the walk,
-     * draw them all via [drawStaticAll] (batched, one `RenderPass` per layer); on any throw fall back
-     * to [emitQuads] for each collected chunk. Fail-open per frame + per chunk.
+     * draw them all via [submitLayers] (one custom-geometry node per layer); on any throw the layer is
+     * skipped for the frame. Fail-open per frame + per chunk.
      */
-    fun render(matrices: PoseStack, vcp: MultiBufferSource, camPos: Vec3, relocOffset: Vec3) {
+    fun render(matrices: PoseStack, collector: SubmitNodeCollector, camPos: Vec3, relocOffset: Vec3) {
         if (!ReplayState.active) return
         val snap = ReplayState.chunks ?: return
         try {
@@ -144,20 +103,18 @@ object ChunkWorldRenderer {
             val camChunkX = Math.floor(rdx / 16.0).toInt()
             val camChunkZ = Math.floor(rdz / 16.0).toInt()
             val dist = ConfigManager.config.clipChunkRenderDistance.coerceIn(4, 12)
-            // Camera look vector for the behind-camera cull (see [behindCamera]). From the CAMERA's
-            // pitch/yaw via Entity.getRotationVector (a pure helper — ignores `this`, so calling it on
-            // the local player with the camera's angles returns the camera's forward; verified +Z at
-            // yaw 0 / pitch 0). Null when the camera/player can't be read → skip the cull this frame
-            // (fail-open: render every in-range chunk, the pre-cull behaviour).
+            // Camera look vector for the behind-camera cull (see [behindCamera]). Taken from the live
+            // camera's pitch/yaw through Vec3.directionFromRotation (the same helper
+            // Entity.getViewVector uses); null when the camera can't be read → skip the cull this
+            // frame (fail-open: render every in-range chunk, the pre-cull behaviour).
             val mc = Minecraft.getInstance()
             val fwd: Vec3? = try {
-                val cam = mc.gameRenderer.camera
-                val p = mc.player
-                if (cam != null && p != null) p.getRotationVector(cam.getPitch(), cam.getYaw()) else null
+                val cam = mc.gameRenderer.mainCamera()
+                if (cam.isInitialized) Vec3.directionFromRotation(cam.xRot(), cam.yRot()) else null
             } catch (_: Throwable) { null }
 
             // Collect the in-range, not-behind-camera, baked chunks (the behind-camera cull + lazy bake
-            // happen in [processChunk]; it returns the chunk to draw via [drawStaticAll] / [emitQuads]).
+            // happen in [processChunk]; it returns the chunk to draw via [submitLayers]).
             // [collectedChunks] is a reused field — render-thread-only, cleared at frame start.
             collectedChunks.clear()
             var budget = LAZY_BAKE_BLOCK_BUDGET
@@ -176,15 +133,7 @@ object ChunkWorldRenderer {
                 }
             }
             if (collectedChunks.isEmpty()) return
-            // C2: try the batched static-GPU-mesh draw; on any throw fall back to the per-block vc.quad
-            // emit for every collected chunk (the fail-open path — correct rendering, no FPS win).
-            try {
-                drawStaticAll(collectedChunks, matrices)
-            } catch (_: Throwable) {
-                for (cb in collectedChunks) {
-                    try { emitQuads(cb, matrices, vcp) } catch (_: Throwable) {}
-                }
-            }
+            submitLayers(collectedChunks, matrices, collector)
         } catch (_: Throwable) {
             // fail-open: chunk world drops this frame, ghosts + live render continue
         }
@@ -239,7 +188,7 @@ object ChunkWorldRenderer {
      * the whole chunk is off-screen — so a chunk with any corner in front is NEVER culled (can't pop).
      * The max-dot is computed per-axis by picking the corner that maximizes each axis's contribution
      * given the sign of [fwd], avoiding an explicit 8-corner loop. [fwd] is non-null + normalized-ish
-     * (Entity.getRotationVector returns a unit vector); the test is scale-invariant in sign anyway.
+     * (Vec3.directionFromRotation returns a unit vector); the test is scale-invariant in sign anyway.
      */
     private fun behindCamera(
         cb: ChunkMesher.ChunkBlocks,
@@ -255,128 +204,34 @@ object ChunkWorldRenderer {
     }
 
     /**
-     * C2 static-draw: draw every collected chunk via **one `RenderPass` per present RenderLayer**.
-     * Each chunk's quads are already in a static `GpuBuffer` (baked once by [ChunkMesher.bakeStatic])
-     * with absolute recorded coords, so per chunk we just bind its vertex buffer + issue one
-     * `drawIndexed` against the shared sequential quad index buffer. The model-view is
-     * `matrices.peek().getPositionMatrix()` (the camera rotation × the shared origin translate) bound
-     * once per layer as `"DynamicTransforms"`; the block atlas + lightmap + a linear sampler are bound
-     * as `Sampler0` / `Sampler2`, mirroring vanilla's `SectionRenderState.renderSection` /
-     * `RenderLayer.draw`. Throws on any missing handle (device/framebuffer/texture not ready) so the
-     * caller falls back to [emitQuads]. All targets/accessors verified against the named 1.21.11 jar
-     * (see the C2 plan).
+     * Group the collected chunks' baked blocks by [RenderType] and submit **one custom-geometry node
+     * per layer** (the block-atlas cutout sheet + the translucent sheet, in practice). Grouping first
+     * keeps the node count at ≤ 2 per frame regardless of how many chunks are in range, and lets the
+     * collector own the phase/ordering decision for each render type (`hasBlending()` → translucent
+     * phase, else opaque). Fail-open per layer.
+     *
+     * The per-layer block lists are freshly allocated each frame (two small lists) rather than reused:
+     * the collector drains a node's geometry *after* `render` returns, so the list handed to
+     * [ImmediateRenderQueue] must stay valid for the rest of the frame.
      */
-    private fun drawStaticAll(chunks: List<ChunkMesher.ChunkBlocks>, matrices: PoseStack) {
-        if (chunks.isEmpty()) return
-        val mc = Minecraft.getInstance()
-        val dev = RenderSystem.getDevice() ?: throw IllegalStateException("no device")
-        val fb = mc.getFramebuffer() ?: throw IllegalStateException("no framebuffer")
-        val colorView = fb.getColorAttachmentView() ?: throw IllegalStateException("no color view")
-        val depthView = fb.getDepthAttachmentView() ?: throw IllegalStateException("no depth view")
-        // Block atlas: vanilla resolves it via TextureManager.getTexture(BLOCK_ATLAS_TEXTURE), NOT
-        // AtlasManager.getAtlasTexture — that one keys by definition id (Atlases.BLOCKS =
-        // "minecraft:blocks") and THROWS "Invalid atlas id" for the texture id
-        // "minecraft:textures/atlas/blocks.png" that BLOCK_ATLAS_TEXTURE holds. TextureManager.getTexture
-        // never returns null (ResourceTexture fallback) and the block atlas is always registered.
-        val atlasView = try {
-            mc.textureManager.getTexture(TextureAtlas.BLOCK_ATLAS_TEXTURE)?.getGlTextureView()
-        } catch (_: Throwable) { null } ?: throw IllegalStateException("no atlas view")
-        val lightmapView = mc.gameRenderer.lightmapTextureManager.getGlTextureView()
-            ?: throw IllegalStateException("no lightmap view")
-        // DynamicTransforms must carry BOTH the view rotation AND the camera-position/origin translate.
-        // The camera ROTATION lives in RenderSystem.getModelViewMatrix() (set by the world renderer) —
-        // NOT in ctx.matrices(), which carries only the translate. The old Immediate path baked
-        // matrices.peek() into the verts AND let RenderLayer.draw set DynamicTransforms = getModelView,
-        // so the shader applied Projection × getModelView × matrices.peek() × raw. We bake only the
-        // per-block translate, so DynamicTransforms = getModelView × matrices.peek() reproduces that
-        // exactly. (Setting it to matrices.peek() alone — C2's first attempt — lost the rotation: blocks
-        // translated with WASD but never rotated with the mouse.) mul(right, dest) writes getModelView ×
-        // base into [MODEL_VIEW] without mutating the shared getModelView matrix or the live stack entry.
-        RenderSystem.getModelViewMatrix().mul(matrices.peek().getPositionMatrix(), MODEL_VIEW)
-        val dynUniforms = RenderSystem.getDynamicUniforms()
-        // The block atlas needs the BLOCK_SAMPLER (CLAMP_TO_EDGE both axes, LINEAR min / NEAREST mag,
-        // mipmap) — vanilla's RenderLayers.BLOCK_SAMPLER. The lightmap uses a plain LINEAR sampler.
-        val blockSampler = RenderSystem.getSamplerCache()
-            .get(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.LINEAR, FilterMode.NEAREST, true)
-        val lightmapSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR)
-        val seq = RenderSystem.getSequentialBuffer(VertexFormat.DrawMode.QUADS)
-        val enc = dev.createCommandEncoder()
-
-        // Group the collected chunks by RenderLayer (at most entityCutout + blockTranslucentCull) so
-        // each layer is one RenderPass with the pipeline + textures + uniform bound once. Reused
-        // per-frame map (render thread only); the inner lists are reused too — cleared, not re-alloc'd.
-        for (list in staticByLayer.values) list.clear()
-        staticByLayer.clear()
-        for (cb in chunks) {
-            for ((layer, st) in cb.staticByLayer) {
-                if (st.vertexCount == 0) continue
-                staticByLayer.getOrPut(layer) { ArrayList() }.add(st)
-            }
-        }
-        if (staticByLayer.isEmpty()) throw IllegalStateException("no static layers")
-
-        // Two operations map a GPU buffer and are ILLEGAL while a RenderPass is open ("Close the
-        // existing render pass before performing additional commands"), so they MUST run before any
-        // createRenderPass: (1) DynamicUniforms.write maps the dynamic-uniform staging buffer to write
-        // the model-view; (2) ShapeIndexBuffer.getIndexBuffer may GROW (map+upload) the shared sequential
-        // quad index buffer. modelView is identical for every layer → write once + grow once to the
-        // global max indexCount, then bind the pre-resolved slice/buffer inside each pass (setUniform /
-        // setIndexBuffer / setVertexBuffer / bindTexture / drawIndexed are pass-safe — they bind, not map).
-        val mv = dynUniforms.write(MODEL_VIEW, COLOR_MOD, MODEL_OFFSET, TEX_IDENTITY)
-        var globalMaxIdx = 0
-        for ((_, list) in staticByLayer) for (st in list) if (st.indexCount > globalMaxIdx) globalMaxIdx = st.indexCount
-        val idxBuffer = seq.getIndexBuffer(globalMaxIdx)
-        val idxType = seq.getIndexType()
-
-        for ((layer, list) in staticByLayer) {
-            var pass: com.mojang.blaze3d.systems.RenderPass? = null
-            try {
-                pass = enc.createRenderPass(passName, colorView, OptionalInt.empty(), depthView, OptionalDouble.empty())
-                pass.setPipeline(layer.getRenderPipeline())
-                RenderSystem.bindDefaultUniforms(pass)
-                pass.setUniform("DynamicTransforms", mv)
-                pass.bindTexture("Sampler0", atlasView, blockSampler)
-                pass.bindTexture("Sampler2", lightmapView, lightmapSampler)
-                pass.setIndexBuffer(idxBuffer, idxType)
-                for (st in list) {
-                    pass.setVertexBuffer(0, st.vb)
-                    pass.drawIndexed(0, 0, st.indexCount, 1)
-                }
-            } finally {
-                try { pass?.close() } catch (_: Throwable) {}
-            }
-        }
-    }
-
-    /** Emit every precomputed quad of one baked chunk at its absolute recorded coord, grouped by
-     *  RenderLayer (one VertexConsumer fetch per layer). One push/translate/pop per block; the shared
-     *  origin translate is already on [matrices]. This is the C2 **fail-open fallback** — the original
-     *  per-frame `vc.quad` emit via the shared world Immediate, used when [drawStaticAll] throws (or a
-     *  chunk has no static buffer). Fail-open per block + per quad. */
-    private fun emitQuads(
-        cb: ChunkMesher.ChunkBlocks,
+    private fun submitLayers(
+        chunks: List<ChunkMesher.ChunkBlocks>,
         matrices: PoseStack,
-        vcp: MultiBufferSource,
+        collector: SubmitNodeCollector,
     ) {
-        for ((layer, blocks) in cb.byLayer) {
-            val vc = try { vcp.getBuffer(layer) } catch (_: Throwable) { return }
-            for (bq in blocks) {
-                try {
-                    matrices.push()
-                    matrices.translate(bq.x.toFloat(), bq.y.toFloat(), bq.z.toFloat())
-                    val entry = matrices.peek()
-                    for (q in bq.quads) {
-                        try {
-                            vc.quad(entry, q, bq.r, bq.g, bq.b, 1f, FULL_LIGHT, OverlayTexture.DEFAULT_UV)
-                        } catch (_: Throwable) {
-                            // skip one bad quad, keep the rest
-                        }
-                    }
-                } catch (_: Throwable) {
-                    // skip one bad block, keep the rest
-                } finally {
-                    try { matrices.pop() } catch (_: Throwable) {}
-                }
+        val byLayer = HashMap<RenderType, ArrayList<ChunkMesher.BlockQuads>>()
+        for (cb in chunks) {
+            for ((layer, blocks) in cb.byLayer) {
+                if (blocks.isEmpty()) continue
+                byLayer.getOrPut(layer) { ArrayList() }.addAll(blocks)
+            }
+        }
+        if (byLayer.isEmpty()) return
+        for ((layer, blocks) in byLayer) {
+            try {
+                collector.submitCustomGeometry(matrices, layer, ImmediateRenderQueue(blocks))
+            } catch (_: Throwable) {
+                // fail-open: this layer's chunk-world geometry drops for the frame
             }
         }
     }

@@ -18,7 +18,8 @@ import java.util.UUID
  *   watch started, or takes a hit (hurtTime rising edge), watch auto-exits. The camera then reverts
  *   to the local player's view (vanilla re-derives it next frame).
  * - **F1 + third-person during watch:** on enable the HUD is hidden (the F1 equivalent —
- *   `options.hudHidden = true`) and the perspective is forced to **third-person back** so the LOCAL
+ *   `Hud.toggle()` on 26.3, where the flag moved off `Options`) and the perspective is forced to
+ *   **third-person back** (`Options.cameraType`) so the LOCAL
  *   player's own model renders in the scene (first-person suppresses your body — the user wants all
  *   entities visible, including themselves). Third-person also keeps the viewmodel hand hidden (so
  *   the earlier "hand pops in" bug stays fixed). The prior HUD-hidden + perspective state is saved
@@ -78,13 +79,17 @@ object WatchState {
             val p = mc.player
             // Save + force the HUD/perspective state: F1 (hide HUD) + third-person back so the
             // local player's own model renders in the scene (first-person suppresses your body).
-            savedHudHidden = mc.options.hudHidden
-            savedPerspective = mc.options.perspective
-            mc.options.hudHidden = true
-            if (mc.options.perspective != CameraType.THIRD_PERSON_BACK) {
-                mc.options.setPerspective(CameraType.THIRD_PERSON_BACK)
+            // 26.3: `Options` no longer carries hudHidden/perspective — the HUD-hidden flag lives on
+            // `Hud` (toggle-only, no setter) and the perspective on `Options.cameraType`.
+            savedHudHidden = mc.gui.hud.isHidden
+            savedPerspective = mc.options.cameraType
+            if (!savedHudHidden) {
+                mc.gui.hud.toggle()
             }
-            startPos = p?.getCameraPosVec(0f)
+            if (mc.options.cameraType != CameraType.THIRD_PERSON_BACK) {
+                mc.options.setCameraType(CameraType.THIRD_PERSON_BACK)
+            }
+            startPos = p?.getEyePosition(0f)
             lastHurtTime = p?.hurtTime ?: 0
             targetUuid = uuid
             pendingExitReason = null
@@ -138,14 +143,14 @@ object WatchState {
 
             // Ignore change-perspective (F5) during watch: re-clamp to third-person back so the
             // local player's own model keeps rendering.
-            if (mc.options.perspective != CameraType.THIRD_PERSON_BACK) {
-                mc.options.setPerspective(CameraType.THIRD_PERSON_BACK)
+            if (mc.options.cameraType != CameraType.THIRD_PERSON_BACK) {
+                mc.options.setCameraType(CameraType.THIRD_PERSON_BACK)
             }
 
             // Movement auto-exit: too far from the start position → stop watching.
             val start = startPos
             if (start != null) {
-                val cur = p.getCameraPosVec(0f)
+                val cur = p.getEyePosition(0f)
                 val dx = cur.x - start.x
                 val dy = cur.y - start.y
                 val dz = cur.z - start.z
@@ -174,8 +179,11 @@ object WatchState {
     /** Restore the saved HUD-hidden + perspective state and clear the per-watch bookkeeping. */
     private fun restore() {
         val mc = Minecraft.getInstance()
-        mc.options.hudHidden = savedHudHidden
-        savedPerspective?.let { mc.options.setPerspective(it) }
+        // `Hud` only exposes a toggle, so restore by comparing the current flag with the saved one.
+        if (mc.gui.hud.isHidden != savedHudHidden) {
+            mc.gui.hud.toggle()
+        }
+        savedPerspective?.let { mc.options.setCameraType(it) }
         savedPerspective = null
         savedHudHidden = false
         targetUuid = null

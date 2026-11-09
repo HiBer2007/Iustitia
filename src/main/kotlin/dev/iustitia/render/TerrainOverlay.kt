@@ -1,12 +1,11 @@
 package dev.iustitia.render
 
+import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.VertexConsumer
 import dev.iustitia.replay.ReplayState
 import dev.iustitia.replay.TerrainSnapshot
-import com.mojang.blaze3d.vertex.VertexConsumer
-import net.minecraft.client.renderer.ShapeRenderer
-import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.world.phys.AABB
-import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.rendertype.RenderTypes
 
 /**
  * Renders the terrain shell bundled in a v5+ clip as a face-culled wireframe overlay, relocated to
@@ -32,10 +31,18 @@ import net.minecraft.world.phys.shapes.Shapes
  *
  * ## Why wireframe cuboids (not filled translucent quads)
  *
- * Reuses [ReplayRenderer]'s proven [VertexRendering.drawOutline] path (depth-tested, no wallhack,
- * consistent with the ghost wireframe aesthetic). A filled translucent layer would need a custom
- * `RenderLayer` whose 1.21.11 yarn API isn't compile-safe to commit to blind; the wireframe shell
+ * Reuses the ghosts' depth-tested line path (no wallhack, consistent with the ghost wireframe
+ * aesthetic). A filled translucent layer would need its own block-model bake; the wireframe shell
  * is the lower-risk v1 and is face-culled just the same. Filled render is a documented follow-up.
+ *
+ * ## 26.3 geometry submission
+ *
+ * `MultiBufferSource` is gone, so the whole shell is emitted through ONE
+ * [SubmitNodeCollector.submitCustomGeometry] call against [RenderTypes.lines]: the callback receives
+ * the collected [PoseStack.Pose] (the shared origin translate [ReplayRenderer] pushed) plus a
+ * [VertexConsumer] for the lines layer, and every shell block emits its 12 cube edges there. That is
+ * the same single-buffer, single-submit shape the old `ShapeRenderer.drawOutline` loop had, and it
+ * keeps the per-frame cost to one node + one vertex emission pass over the shell.
  *
  * Read-only: adds no detection, sends no packets, edits no world.
  */
@@ -54,11 +61,32 @@ object TerrainOverlay {
     private var shell: List<ShellBlock> = emptyList()
 
     /**
+     * The 12 edges of a unit cube, each as `x1,y1,z1,x2,y2,z2,nx,ny,nz` (the normal is the
+     * normalized edge direction — exactly what vanilla's `ShapeOutlineFeatureRenderer` derives per
+     * edge). Precomputed so a shell of thousands of blocks emits with no per-block allocation.
+     */
+    private val CUBE_EDGES: Array<FloatArray> = arrayOf(
+        floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f),
+        floatArrayOf(0f, 0f, 1f, 1f, 0f, 1f, 1f, 0f, 0f),
+        floatArrayOf(0f, 1f, 0f, 1f, 1f, 0f, 1f, 0f, 0f),
+        floatArrayOf(0f, 1f, 1f, 1f, 1f, 1f, 1f, 0f, 0f),
+        floatArrayOf(0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f),
+        floatArrayOf(1f, 0f, 0f, 1f, 0f, 1f, 0f, 0f, 1f),
+        floatArrayOf(0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f),
+        floatArrayOf(1f, 1f, 0f, 1f, 1f, 1f, 0f, 0f, 1f),
+        floatArrayOf(0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f),
+        floatArrayOf(1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f),
+        floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f, 0f),
+        floatArrayOf(1f, 0f, 1f, 1f, 1f, 1f, 0f, 1f, 0f),
+    )
+
+    /**
      * Draw the terrain shell if a clip with terrain is playing. Call from [ReplayRenderer] inside the
      * shared origin translate (so the offset that relocates ghosts also relocates the terrain).
-     * [lines] is the same `RenderLayers.lines()` VertexConsumer the ghosts use. Fail-open.
+     * [collector] is the frame's submit-node collector — the shell is emitted as one custom-geometry
+     * node on the lines render type. Fail-open.
      */
-    fun render(matrices: PoseStack, lines: VertexConsumer) {
+    fun render(matrices: PoseStack, collector: SubmitNodeCollector) {
         try {
             if (!ReplayState.active) return
             // A v6+ chunk-bearing clip renders its world as SOLID textured blocks via ChunkWorldRenderer,
@@ -69,12 +97,38 @@ object TerrainOverlay {
             if (ReplayState.chunks != null) return
             val ts = ReplayState.terrain ?: return
             ensureBuilt(ts)
-            for (b in shell) {
-                box(matrices, lines, b.x.toDouble(), b.y.toDouble(), b.z.toDouble(),
-                    (b.x + 1).toDouble(), (b.y + 1).toDouble(), (b.z + 1).toDouble(), b.color, TERRAIN_WIDTH)
+            val shell = shell
+            if (shell.isEmpty()) return
+            collector.submitCustomGeometry(matrices, RenderTypes.lines()) { pose, lines ->
+                for (b in shell) {
+                    emitCube(pose, lines, b.x.toFloat(), b.y.toFloat(), b.z.toFloat(), b.color)
+                }
             }
         } catch (_: Throwable) {
             // fail-open: a render error never crashes the client
+        }
+    }
+
+    /**
+     * Emit the 12 edges of the unit cube at ([x],[y],[z]) in the pose's frame. Mirrors vanilla's
+     * `ShapeOutlineFeatureRenderer`: each vertex carries the edge color, the edge-direction normal and
+     * the requested line width (the width lives on the vertex on 26.3, not on a per-draw state).
+     */
+    private fun emitCube(
+        pose: PoseStack.Pose,
+        lines: VertexConsumer,
+        x: Float, y: Float, z: Float,
+        color: Int,
+    ) {
+        for (e in CUBE_EDGES) {
+            lines.addVertex(pose, x + e[0], y + e[1], z + e[2])
+                .setColor(color)
+                .setNormal(pose, e[6], e[7], e[8])
+                .setLineWidth(TERRAIN_WIDTH)
+            lines.addVertex(pose, x + e[3], y + e[4], z + e[5])
+                .setColor(color)
+                .setNormal(pose, e[6], e[7], e[8])
+                .setLineWidth(TERRAIN_WIDTH)
         }
     }
 
@@ -129,17 +183,6 @@ object TerrainOverlay {
         if (nx < ox || nx > mx || ny < oy || ny > my || nz < oz || nz > mz) return true
         val name = g[pack(nx, ny, nz)] ?: return true   // not in grid → air → exposed
         return TerrainColors.isTransparent(name)        // glass/leaves/water/… → see-through → exposed
-    }
-
-    /** Draw an axis-aligned box outline in the CURRENT matrix frame (offset 0; caller positions). */
-    private fun box(
-        matrices: PoseStack, lines: VertexConsumer,
-        minx: Double, miny: Double, minz: Double,
-        maxx: Double, maxy: Double, maxz: Double,
-        color: Int, width: Float,
-    ) {
-        val shape = Shapes.cuboid(AABB(minx, miny, minz, maxx, maxy, maxz))
-        ShapeRenderer.drawOutline(matrices, lines, shape, 0.0, 0.0, 0.0, color, width)
     }
 
     /** Pack a block pos to a long key for the grid HashMap. x/z 24 bits (±8M), y 16 bits (±32k) —
