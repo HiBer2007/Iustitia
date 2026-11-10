@@ -303,7 +303,13 @@ object PresetManager {
      */
     private fun everyday(): IustitiaConfig = IustitiaConfig().apply {
         targetHighlight = false; watchFollowCam = false; burstSparks = false
-        hoverTooltip = false; tabListBadge = false; nametagBurstPulse = false
+        // Display cues (backported from the 26.3 port): the tab-list tier badge, the foot trail and
+        // the floating nameplates stay ON in the everyday profile — they are read-only tier cues a
+        // moderator reads at a glance, and shipping them off made them look broken on a fresh
+        // install. An existing config keeps its saved values; re-apply the preset to pick these up.
+        hoverTooltip = false; tabListBadge = true; nametagBurstPulse = false
+        footTrail = true; footTrailGreen = true
+        nameplates = true; nameplateRedGlow = true
         lagHudIcon = true   // the one light visual: explains WHY alerts soften during lag bursts
         confidenceHud = false; transcriptPanel = false
         alertLevel = 1; alertBatching = true; compactMode = false; verbose = false

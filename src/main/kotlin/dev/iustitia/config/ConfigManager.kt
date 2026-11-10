@@ -297,6 +297,12 @@ object ConfigManager {
         addProperty("burstSparks", c.burstSparks)
         addProperty("hoverTooltip", c.hoverTooltip)
         addProperty("tabListBadge", c.tabListBadge)
+        // Display cues backported from the 26.3 port (additive; fromJson reads them conditionally).
+        addProperty("footTrail", c.footTrail)
+        addProperty("footTrailGreen", c.footTrailGreen)
+        addProperty("footTrailTicks", c.footTrailTicks)
+        addProperty("nameplates", c.nameplates)
+        addProperty("nameplateRedGlow", c.nameplateRedGlow)
         // Phase 2 instant-replay / clip (additive; fromJson reads them conditionally).
         addProperty("replayCapture", c.replayCapture)
         addProperty("replayHideLive", c.replayHideLive)
@@ -397,6 +403,11 @@ object ConfigManager {
         if (o.has("burstSparks")) c.burstSparks = o.get("burstSparks").asBoolean
         if (o.has("hoverTooltip")) c.hoverTooltip = o.get("hoverTooltip").asBoolean
         if (o.has("tabListBadge")) c.tabListBadge = o.get("tabListBadge").asBoolean
+        if (o.has("footTrail")) c.footTrail = o.get("footTrail").asBoolean
+        if (o.has("footTrailGreen")) c.footTrailGreen = o.get("footTrailGreen").asBoolean
+        if (o.has("footTrailTicks")) c.footTrailTicks = o.get("footTrailTicks").asInt
+        if (o.has("nameplates")) c.nameplates = o.get("nameplates").asBoolean
+        if (o.has("nameplateRedGlow")) c.nameplateRedGlow = o.get("nameplateRedGlow").asBoolean
         if (o.has("replayCapture")) c.replayCapture = o.get("replayCapture").asBoolean
         if (o.has("replayHideLive")) c.replayHideLive = o.get("replayHideLive").asBoolean
         if (o.has("replayPlayerModels")) c.replayPlayerModels = o.get("replayPlayerModels").asBoolean

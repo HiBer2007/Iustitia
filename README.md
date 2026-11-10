@@ -278,6 +278,8 @@ All four instant-replay tools have toggles in `/ius config` (Replay capture buff
 - **Crosshair confidence HUD**. A compact panel near the crosshair with the looked-at player's tier glyph + score + why-this-tier + FP hint.
 - **Server-lag HUD indicator**: a top-left ⚠ marker while a server-lag burst is recent (shows *why* alerts are being softened).
 - **Tab-list badge**: the tier glyph (+ score) prepended to each other player's row in the Tab list.
+- **Foot trail**: a short trail of small tier-colored wireframe cubes at each tracked player's feet, one per recorded tick, fading out over its lifetime — the movement path the detector actually saw. Green (clean) players are included by default, because a not-yet-flagged player is exactly who you want to watch. Toggle/length: **Foot trail**, **Green foot trail**, **Foot-trail length**.
+- **Floating nameplates**: the tier glyph plus the player's **native display name** (team prefix and colours included) above a tracked head. It only supplements vanilla: the plate appears when vanilla hides its own nametag (a crouching player) and there only for yellow/red, so the label is never doubled. Red plates carry a full-plate red highlight behind the text. Toggles: **Floating nameplates**, **Red nameplate highlight**.
 - **Offender selfie**: a single-frame third-person screenshot of a freshly-red player, saved to `%APPDATA%/.iustitia/snapshots` (when persistence is on).
 
 Each overlay has its own toggle in `/ius config` and is off-able independently.

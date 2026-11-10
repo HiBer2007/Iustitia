@@ -61,6 +61,12 @@ object YaclScreenBuilder {
                     .option(bool("iustitia.cfg.option.burstSparks.name", "iustitia.cfg.option.burstSparks.desc", { cfg.burstSparks }) { cfg.burstSparks = it })
                     .option(bool("iustitia.cfg.option.hoverTooltip.name", "iustitia.cfg.option.hoverTooltip.desc", { cfg.hoverTooltip }) { cfg.hoverTooltip = it })
                     .option(bool("iustitia.cfg.option.tabListBadge.name", "iustitia.cfg.option.tabListBadge.desc", { cfg.tabListBadge }) { cfg.tabListBadge = it })
+                    // Display cues backported from the 26.3 port.
+                    .option(bool("iustitia.cfg.option.footTrail.name", "iustitia.cfg.option.footTrail.desc", { cfg.footTrail }) { cfg.footTrail = it })
+                    .option(bool("iustitia.cfg.option.footTrailGreen.name", "iustitia.cfg.option.footTrailGreen.desc", { cfg.footTrailGreen }) { cfg.footTrailGreen = it })
+                    .option(int("iustitia.cfg.option.footTrailTicks.name", "iustitia.cfg.option.footTrailTicks.desc", { cfg.footTrailTicks }, 1, 40) { cfg.footTrailTicks = it })
+                    .option(bool("iustitia.cfg.option.nameplates.name", "iustitia.cfg.option.nameplates.desc", { cfg.nameplates }) { cfg.nameplates = it })
+                    .option(bool("iustitia.cfg.option.nameplateRedGlow.name", "iustitia.cfg.option.nameplateRedGlow.desc", { cfg.nameplateRedGlow }) { cfg.nameplateRedGlow = it })
                     .option(bool("iustitia.cfg.option.persistence.name", "iustitia.cfg.option.persistence.desc", { cfg.persistenceEnabled }) { cfg.persistenceEnabled = it })
                     .build()
             )

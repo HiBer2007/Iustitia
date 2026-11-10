@@ -154,6 +154,28 @@ data class IustitiaConfig(
      *  touches your own row. */
     var tabListBadge: Boolean = true,
 
+    /** Foot trail: a short trail of small tier-colored wireframe cubes at each tracked player's feet,
+     *  one per recorded tick, fading out over [footTrailTicks] — the movement path the detector saw.
+     *  Render-only, depth-tested (occluded by walls). Backported from the 26.3 port. */
+    var footTrail: Boolean = true,
+
+    /** Also draw the foot trail for clean (green) players — a not-yet-flagged player is exactly who
+     *  you want to watch. Off keeps only yellow/red trails. */
+    var footTrailGreen: Boolean = true,
+
+    /** Foot-trail lifetime in ticks (one cube per tick, oldest fades out first). 1..40. */
+    var footTrailTicks: Int = 20,
+
+    /** Floating nameplates: above a tracked head, `[+]` / `[!]` / `[X]` plus the player's native
+     *  display name (team prefix and colours included). Only drawn when vanilla hides its own
+     *  nametag (a discrete/sneaking player) so the label is never doubled; red plates carry a
+     *  full-plate highlight. Render-only. Backported from the 26.3 port. */
+    var nameplates: Boolean = true,
+
+    /** Red-tier nameplate glow: draw the full-plate highlight (translucent red band + red outline)
+     *  behind/around a red plate instead of plain red text. */
+    var nameplateRedGlow: Boolean = true,
+
     // --- Phase 2 instant-replay / clip ---
     /** Master toggle for the rolling replay capture buffer ([dev.iustitia.replay.ReplayBuffer]). On by
      *  default — the per-tick work is tiny (≤64 players × ≤1200 frames), and turning it off only

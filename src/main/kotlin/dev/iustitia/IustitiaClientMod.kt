@@ -78,6 +78,11 @@ class IustitiaClientMod : ClientModInitializer {
         // player, drawn at WorldRenderEvents.AFTER_ENTITIES (depth-tested, no wallhack).
         try { dev.iustitia.render.TargetHighlightRenderer.register() } catch (_: Throwable) {}
 
+        // Backported display cues (26.3 port): the foot trail of tier-colored cubes and the
+        // supplemental floating nameplates. Both render-only, fail-open, depth-tested.
+        try { dev.iustitia.render.FootTrailRenderer.register() } catch (_: Throwable) {}
+        try { dev.iustitia.render.NameplateRenderer.register() } catch (_: Throwable) {}
+
         // Phase 2 instant-replay renderer: while a replay (/ius replay or /ius playclip) is active,
         // draws translucent ghost copies of every player at the playhead frame's buffered positions
         // (AFTER_ENTITIES, depth-tested) + a bottom-center progress HUD. The hide-live mixin (in
