@@ -27,13 +27,17 @@ import kotlin.math.hypot
  * layer, so the whole layer can be handed to the optional Streamproof composite and stay out of
  * recordings.
  *
- * ## What it draws (1.6.1 rules)
+ * ## What it draws (1.6.2 rules)
+ *
+ * **Only the YELLOW/RED self-drawn cues.** Clean (green) players are not drawn here at all: their
+ * tier already lives on the vanilla nametag prefix, which stays in the game frame and does not need
+ * to be hidden from a recording. Everything else about a clean player is left untouched.
  *
  * - **Box: crosshair target only.** A hitbox-accurate wireframe (the 12 projected edges of the
  *   entity's `boundingBox`) is drawn only for the player the crosshair is on — exactly the INGAME
  *   engine's target-highlight semantics. It is *not* a per-player "always on" box.
- * - **Nameplates**: tier glyph + the player's native display name above the hitbox, for yellow/red
- *   players (green only when green cues are on).
+ * - **Nameplates**: tier glyph + the player's native display name above the hitbox, drawn only when
+ *   vanilla hides its own nametag (a sneak) so the label is never doubled.
  * - **Foot trail**: the fading recorded path as a dotted screen polyline.
  *
  * ## Occlusion (遮挡解算)
@@ -142,7 +146,10 @@ object OverrideHudRenderer : HudElement {
                 if (entity.isRemoved || entity.uuid == selfUuid) continue
 
                 val tier = tp.tier
-                if (tier == FlagHistory.Tier.GREEN && !ConfigManager.config.nametagGreenEnabled) continue
+                // Per user rule (1.6.2): OVERRIDE only carries the YELLOW/RED self-drawn cues. Clean
+                // players are left entirely to the vanilla nametag prefix (PlayerEntityRendererMixin),
+                // which stays visible in-game and does not need to be hidden from a recording.
+                if (tier == FlagHistory.Tier.GREEN) continue
                 val baseColor = when (tier) {
                     FlagHistory.Tier.RED -> RED
                     FlagHistory.Tier.YELLOW -> YELLOW
@@ -170,7 +177,13 @@ object OverrideHudRenderer : HudElement {
                 val label = Text.empty()
                     .append(Text.literal("[$glyph] ").styled { it.withColor(baseColor) })
                     .append(native)
-                drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
+                // Same rule as the INGAME plates: only supplement vanilla, never double it. While the
+                // server lets the vanilla nametag render (the standing case) its prefix already shows
+                // the tier, so our own plate is drawn only when vanilla hides it — a sneak.
+                val sneaking = try { entity.isSneaking } catch (_: Throwable) { false }
+                if (sneaking) {
+                    drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
+                }
 
                 // --- box: the crosshair target only, hitbox-accurate, per-edge occlusion ---
                 if (targetUuid != null && entity.uuid == targetUuid) {
