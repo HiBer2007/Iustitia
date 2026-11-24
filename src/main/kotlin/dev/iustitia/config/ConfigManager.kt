@@ -303,6 +303,10 @@ object ConfigManager {
         addProperty("footTrailTicks", c.footTrailTicks)
         addProperty("nameplates", c.nameplates)
         addProperty("nameplateRedGlow", c.nameplateRedGlow)
+        // Render-engine selection (1.6.0): the enum is stored by name so an unknown/older value
+        // falls back to INGAME on load instead of failing the whole config parse.
+        addProperty("renderEngine", c.renderEngine.name)
+        addProperty("streamproof", c.streamproof)
         // Phase 2 instant-replay / clip (additive; fromJson reads them conditionally).
         addProperty("replayCapture", c.replayCapture)
         addProperty("replayHideLive", c.replayHideLive)
@@ -408,6 +412,17 @@ object ConfigManager {
         if (o.has("footTrailTicks")) c.footTrailTicks = o.get("footTrailTicks").asInt
         if (o.has("nameplates")) c.nameplates = o.get("nameplates").asBoolean
         if (o.has("nameplateRedGlow")) c.nameplateRedGlow = o.get("nameplateRedGlow").asBoolean
+        // Fail-open parse: an unknown engine name keeps the default (INGAME).
+        if (o.has("renderEngine")) {
+            try {
+                c.renderEngine = dev.iustitia.render.engine.RenderEngine.valueOf(
+                    o.get("renderEngine").asString.uppercase(),
+                )
+            } catch (_: Throwable) {
+                // keep INGAME
+            }
+        }
+        if (o.has("streamproof")) c.streamproof = o.get("streamproof").asBoolean
         if (o.has("replayCapture")) c.replayCapture = o.get("replayCapture").asBoolean
         if (o.has("replayHideLive")) c.replayHideLive = o.get("replayHideLive").asBoolean
         if (o.has("replayPlayerModels")) c.replayPlayerModels = o.get("replayPlayerModels").asBoolean

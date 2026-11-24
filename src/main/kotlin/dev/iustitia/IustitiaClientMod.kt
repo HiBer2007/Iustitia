@@ -83,6 +83,13 @@ class IustitiaClientMod : ClientModInitializer {
         try { dev.iustitia.render.FootTrailRenderer.register() } catch (_: Throwable) {}
         try { dev.iustitia.render.NameplateRenderer.register() } catch (_: Throwable) {}
 
+        // 1.6.0 render engines: INGAME (the world overlays above) and OVERRIDE (the same cues drawn
+        // as a screen-space HUD layer with manual raycast occlusion). OVERRIDE can be composed through
+        // the optional Streamproof mod so it stays out of recordings; without it the layer simply
+        // renders visibly. The engine switch lives on the `engine` keybind + /ius config.
+        try { dev.iustitia.render.engine.StreamproofBridge.init() } catch (_: Throwable) {}
+        try { dev.iustitia.render.engine.OverrideHudRenderer.register() } catch (_: Throwable) {}
+
         // Phase 2 instant-replay renderer: while a replay (/ius replay or /ius playclip) is active,
         // draws translucent ghost copies of every player at the playhead frame's buffered positions
         // (AFTER_ENTITIES, depth-tested) + a bottom-center progress HUD. The hide-live mixin (in

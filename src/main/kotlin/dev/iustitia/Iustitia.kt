@@ -324,6 +324,23 @@ object Iustitia {
                     chat(mc, L10n.s("iustitia.misc.compactModeStatus",
                         if (ConfigManager.config.compactMode) L10n.s("iustitia.misc.compactOn") else L10n.s("iustitia.misc.compactOff")))
                 }
+                "engine" -> {
+                    // Flip INGAME ⇄ OVERRIDE. The suffix tells the user whether the OVERRIDE layer
+                    // is actually offscreen (invisible to capture) or just a normal HUD.
+                    val next = dev.iustitia.render.engine.EngineManager.toggle()
+                    val name = if (next == dev.iustitia.render.engine.RenderEngine.OVERRIDE) {
+                        L10n.s("iustitia.misc.engineOverride")
+                    } else {
+                        L10n.s("iustitia.misc.engineIngame")
+                    }
+                    val suffix = when {
+                        next != dev.iustitia.render.engine.RenderEngine.OVERRIDE -> ""
+                        dev.iustitia.render.engine.EngineManager.streamproofActive() ->
+                            L10n.s("iustitia.misc.engineStreamproofOn")
+                        else -> L10n.s("iustitia.misc.engineStreamproofOff")
+                    }
+                    chat(mc, L10n.s("iustitia.misc.engineSwitched", name, suffix))
+                }
                 "watch" -> {
                     // Companion ownership: FollowCam owns the follow-cam when installed.
                     if (dev.iustitia.compat.CompanionMods.followCam) {

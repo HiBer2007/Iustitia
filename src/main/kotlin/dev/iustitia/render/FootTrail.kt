@@ -70,6 +70,8 @@ object FootTrailRenderer {
 
     private fun render(ctx: WorldRenderContext) {
         val cfg = try { ConfigManager.config } catch (_: Throwable) { return }
+        // 1.6.0 render engines: OVERRIDE draws the same trail as a screen-space layer.
+        if (dev.iustitia.render.engine.EngineManager.isOverride()) return
         if (!cfg.footTrail) return
         val ticks = cfg.footTrailTicks.coerceIn(1, 40)
         val players = try { EntityTrackerManager.all() } catch (_: Throwable) { return }

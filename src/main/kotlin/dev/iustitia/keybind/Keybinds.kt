@@ -69,6 +69,9 @@ object Keybinds {
         Bind("replaySeekBack", GLFW.GLFW_KEY_KP_SUBTRACT, null),
         Bind("replayExit", GLFW.GLFW_KEY_KP_0, null),
         Bind("replayToggle", GLFW.GLFW_KEY_KP_MULTIPLY, null),
+        // Render-engine switch (INGAME ⇄ OVERRIDE). F10 is unused by vanilla, so it does not steal
+        // an existing bind; rebindable in Controls → Iustitia like every other bind.
+        Bind("engine", GLFW.GLFW_KEY_F10, null),
     )
 
     /** All registered binds (read by [dev.iustitia.ui.KeybindHubScreen]). Order = display order. */

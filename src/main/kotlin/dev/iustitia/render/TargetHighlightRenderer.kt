@@ -47,6 +47,8 @@ object TargetHighlightRenderer {
             WorldRenderEvents.AFTER_ENTITIES.register(WorldRenderEvents.AfterEntities { ctx ->
                 try {
                     if (!ConfigManager.config.targetHighlight) return@AfterEntities
+                    // 1.6.0 render engines: the OVERRIDE HUD layer draws the target accent itself.
+                    if (dev.iustitia.render.engine.EngineManager.isOverride()) return@AfterEntities
                     val mc = MinecraftClient.getInstance()
                     val hit = mc.crosshairTarget
                     if (hit !is EntityHitResult) return@AfterEntities

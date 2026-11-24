@@ -284,6 +284,24 @@ All four instant-replay tools have toggles in `/ius config` (Replay capture buff
 
 Each overlay has its own toggle in `/ius config` and is off-able independently.
 
+## What's new in 1.6.0 — two render engines
+
+- **Two render engines**, switchable at runtime with the new `engine` keybind (default **F10**) or
+  with *Render engine* in `/ius config`:
+  - *INGAME* (default, unchanged): the foot trail, nameplates and target box are depth-tested world
+    geometry submitted in `WorldRenderEvents.AFTER_ENTITIES`.
+  - *OVERRIDE*: the same cues are projected into screen space (`GameRenderer.project`) and drawn as a
+    HUD layer on `DrawContext`, with **manual occlusion** — every marker is tested with a
+    `RaycastContext` ray from the camera, so a player behind a wall is not drawn (the same "no
+    wallhack" rule the in-game engine gets from the depth buffer).
+- **Streamproof (optional).** When the Streamproof mod is installed and live, the OVERRIDE layer is
+  composited offscreen and therefore **does not appear in OBS game/window capture**. Without it (or
+  with *Streamproof* off) OVERRIDE still renders — visibly. The bridge is reflective, so this is an
+  optional integration, never a dependency.
+- **Both engines keep every cue**: target accent box, tier boxes, floating nameplates (tier glyph +
+  native display name, red plate highlight) and the fading foot trail.
+- See [MULTIVERSION.md](MULTIVERSION.md) for how the 1.21.11 and 26.3 branches are kept in sync.
+
 ## Configuration
 
 - **In-game:** `/ius config` opens a YACL screen with a toggle per check plus all the global switches — master, chat alerts, nametag prefixes / burst pulse / green-tick, alert presets, smart batching, audio cues, lag-soften, compact mode, the render/HUD overlays, persistence, and the first-launch wizard.

@@ -67,6 +67,34 @@ object YaclScreenBuilder {
                     .option(int("iustitia.cfg.option.footTrailTicks.name", "iustitia.cfg.option.footTrailTicks.desc", { cfg.footTrailTicks }, 1, 40) { cfg.footTrailTicks = it })
                     .option(bool("iustitia.cfg.option.nameplates.name", "iustitia.cfg.option.nameplates.desc", { cfg.nameplates }) { cfg.nameplates = it })
                     .option(bool("iustitia.cfg.option.nameplateRedGlow.name", "iustitia.cfg.option.nameplateRedGlow.desc", { cfg.nameplateRedGlow }) { cfg.nameplateRedGlow = it })
+                    // Render engine (1.6.0): INGAME world overlay vs OVERRIDE screen-space HUD that
+                    // can be routed through the Streamproof offscreen composite.
+                    .apply {
+                        val streamproofOption = bool(
+                            "iustitia.cfg.option.streamproof.name",
+                            "iustitia.cfg.option.streamproof.desc",
+                            { cfg.streamproof },
+                        ) { cfg.streamproof = it }
+                        option(
+                            Option.createBuilder<dev.iustitia.render.engine.RenderEngine>()
+                                .name(L10n.t("iustitia.cfg.option.renderEngine.name"))
+                                .description(OptionDescription.of(L10n.t("iustitia.cfg.option.renderEngine.desc")))
+                                .binding(cfg.renderEngine, { cfg.renderEngine }, { cfg.renderEngine = it })
+                                .addListener { opt, _ ->
+                                    try {
+                                        streamproofOption.setAvailable(
+                                            opt.pendingValue() == dev.iustitia.render.engine.RenderEngine.OVERRIDE,
+                                        )
+                                    } catch (_: Throwable) {}
+                                }
+                                .controller { opt ->
+                                    EnumControllerBuilder.create(opt)
+                                        .enumClass(dev.iustitia.render.engine.RenderEngine::class.java)
+                                }
+                                .build(),
+                        )
+                        option(streamproofOption)
+                    }
                     .option(bool("iustitia.cfg.option.persistence.name", "iustitia.cfg.option.persistence.desc", { cfg.persistenceEnabled }) { cfg.persistenceEnabled = it })
                     .build()
             )
