@@ -7,6 +7,7 @@ import dev.iustitia.tracking.TrackedPlayer
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.font.TextRenderer
 import net.minecraft.client.gui.DrawContext
 import net.minecraft.client.render.RenderTickCounter
 import net.minecraft.client.world.ClientWorld
@@ -15,39 +16,42 @@ import net.minecraft.text.Text
 import net.minecraft.util.Identifier
 import net.minecraft.util.hit.EntityHitResult
 import net.minecraft.util.hit.HitResult
+import net.minecraft.util.math.Box
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.RaycastContext
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
- * OVERRIDE render engine for 1.21.11: the same display cues the in-world renderers draw, but
- * **projected into screen space and drawn as a HUD layer**.
+ * OVERRIDE render engine for 1.21.11: the display cues projected into screen space and drawn as a HUD
+ * layer, so the whole layer can be handed to the optional Streamproof composite and stay out of
+ * recordings.
  *
- * ## Why a HUD layer
+ * ## What it draws (1.6.1 rules)
  *
- * A HUD layer can be handed to the optional **Streamproof** composite ([StreamproofBridge]), which
- * presents after the game frame — so the cues never enter the game's back buffer and are absent from
- * OBS game/window capture. That is the point of the engine: keep the markers on the moderator's
- * monitor and off the stream.
- *
- * The engine never depends on Streamproof: without it (or with the Streamproof toggle off) the same
- * layer is drawn visibly, so switching engines never loses information.
+ * - **Box: crosshair target only.** A hitbox-accurate wireframe (the 12 projected edges of the
+ *   entity's `boundingBox`) is drawn only for the player the crosshair is on — exactly the INGAME
+ *   engine's target-highlight semantics. It is *not* a per-player "always on" box.
+ * - **Nameplates**: tier glyph + the player's native display name above the hitbox, for yellow/red
+ *   players (green only when green cues are on).
+ * - **Foot trail**: the fading recorded path as a dotted screen polyline.
  *
  * ## Occlusion (遮挡解算)
  *
- * A HUD layer has no depth buffer, so the in-game depth test is reproduced by hand: every marker is
- * tested with a [RaycastContext] ray from the camera to the sample point, and a sample whose sight
- * line is blocked is skipped (transparent blocks such as leaves and panes don't count because they
- * have no colliding shape). A player is drawn when its head, chest or feet is visible, so a
- * half-hidden target still reads while one fully behind a wall does not — the same "no wallhack"
- * behaviour the INGAME engine gets from the depth buffer.
+ * Every element is gated by a world raycast ([sightLineClear]) from the camera:
+ * - a player whose **head and chest** are both blocked is not drawn at all (feet-only visibility does
+ *   not count — a target behind a wall must not have a floating label),
+ * - a box **edge** whose midpoint is blocked is skipped, so the part of the hitbox behind cover stays
+ *   hidden while the visible part still reads,
+ * - a trail sample that is blocked is skipped.
+ * Transparent, non-colliding blocks (leaves, panes, grass) do not occlude.
  *
- * ## What it draws
+ * ## Perspective (近大远小)
  *
- * - a tier-colored screen box per tracked player (red/yellow always, green only when green cues are on),
- * - the floating nameplate above the box (tier glyph + the player's native display name; on a red
- *   plate a translucent red band behind the text is the "highlight"),
- * - the foot trail as a dotted screen polyline of fading tier-colored squares,
- * - a brighter accent box on the crosshair target.
+ * Nothing is drawn at a fixed pixel size. Screen positions come from projecting the real 3D
+ * coordinates, and the text/trail sizes are derived from the projected size of a 1-block world
+ * segment at that point ([pixelsPerBlock]), so a distant player's label shrinks the same way vanilla
+ * nametags do and a close one grows.
  *
  * Render-only and fail-open: no packets, no state written, every step wrapped.
  */
@@ -66,6 +70,9 @@ object OverrideHudRenderer : HudElement {
 
     /** Occlusion rays spent on one player's trail per frame (the newest ones). */
     private const val MAX_TRAIL_RAYS = 8
+
+    /** Label height in blocks — used to turn [pixelsPerBlock] into a font scale. */
+    private const val LABEL_BLOCK_HEIGHT = 0.26
 
     private var hadPlayers = false
 
@@ -94,7 +101,7 @@ object OverrideHudRenderer : HudElement {
         }
         val mc = MinecraftClient.getInstance()
         val self = mc.player ?: return
-        val level = mc.world ?: return
+        if (mc.world == null) return
         val tracked = try { EntityTrackerManager.all() } catch (_: Throwable) { return }
 
         if (tracked.isEmpty()) {
@@ -127,6 +134,7 @@ object OverrideHudRenderer : HudElement {
         val camPos = mc.gameRenderer.camera.cameraPos
         val level = mc.world as? ClientWorld ?: return
         val ticks = try { ConfigManager.config.footTrailTicks.coerceIn(1, 40) } catch (_: Throwable) { 20 }
+        val targetUuid = (mc.crosshairTarget as? EntityHitResult)?.entity?.uuid
 
         for (tp in tracked) {
             try {
@@ -141,55 +149,129 @@ object OverrideHudRenderer : HudElement {
                     FlagHistory.Tier.GREEN -> GREEN
                 }
 
-                val px = entity.x
-                val py = entity.y
-                val pz = entity.z
-                val head = Vec3d(px, py + 1.82, pz)
-                val chest = Vec3d(px, py + 1.05, pz)
-                val feetPoint = Vec3d(px, py + 0.10, pz)
-                val headVisible = sightLineClear(level, camPos, head)
-                val chestVisible = sightLineClear(level, camPos, chest)
-                val feetVisible = sightLineClear(level, camPos, feetPoint)
-                if (!headVisible && !chestVisible && !feetVisible) continue
+                val box = entity.boundingBox
+                val headPoint = Vec3d((box.minX + box.maxX) * 0.5, box.maxY - 0.2, (box.minZ + box.maxZ) * 0.5)
+                val chestPoint = Vec3d((box.minX + box.maxX) * 0.5, box.minY + box.lengthY * 0.62, (box.minZ + box.maxZ) * 0.5)
+                // Feet-only visibility does not count: if the upper body is behind cover, stay hidden.
+                val headClear = sightLineClear(level, camPos, headPoint)
+                val chestClear = sightLineClear(level, camPos, chestPoint)
+                if (!headClear && !chestClear) continue
 
-                val feetScreen = project(mc, w, h, feetPoint)
-                val headScreen = project(mc, w, h, head)
-                if (feetScreen != null && headScreen != null) {
-                    val halfW = (((headScreen.second - feetScreen.second).coerceAtLeast(10)) * 0.34f).coerceAtLeast(5f)
-                    val cx = feetScreen.first.toFloat()
-                    val topY = headScreen.second.toFloat() - 2f
-                    val botY = feetScreen.second.toFloat() + 2f
-                    drawBox(graphics, cx - halfW, topY, cx + halfW, botY, baseColor)
+                val headScreen = project(mc, w, h, headPoint) ?: continue
+                val ppb = pixelsPerBlock(mc, w, h, headPoint) ?: 0.0
 
-                    val hit = mc.crosshairTarget
-                    if (hit is EntityHitResult && hit.entity?.uuid == tp.uuid) {
-                        drawBox(graphics, cx - halfW - 1.5f, topY - 1.5f, cx + halfW + 1.5f, botY + 1.5f, WHITE)
-                    }
+                // --- nameplate: perspective-scaled, centred above the hitbox ---
+                val glyph = when (tier) {
+                    FlagHistory.Tier.RED -> "X"
+                    FlagHistory.Tier.YELLOW -> "!"
+                    FlagHistory.Tier.GREEN -> "+"
+                }
+                val native = try { entity.displayName } catch (_: Throwable) { Text.empty() }
+                val label = Text.empty()
+                    .append(Text.literal("[$glyph] ").styled { it.withColor(baseColor) })
+                    .append(native)
+                drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
 
-                    val glyph = when (tier) {
-                        FlagHistory.Tier.RED -> "X"
-                        FlagHistory.Tier.YELLOW -> "!"
-                        FlagHistory.Tier.GREEN -> "+"
-                    }
-                    val native = try { entity.displayName } catch (_: Throwable) { Text.empty() }
-                    val label = Text.empty()
-                        .append(Text.literal("[$glyph] ").styled { it.withColor(baseColor) })
-                        .append(native)
-                    val textW = font.getWidth(label)
-                    val textX = (cx - textW / 2f).toInt()
-                    val textY = (topY - 11f).toInt().coerceAtLeast(2)
-                    if (tier == FlagHistory.Tier.RED) {
-                        graphics.fill(textX - 2, textY - 1, textX + textW + 2, textY + 9, RED_PLATE)
-                    }
-                    graphics.drawText(font, label, textX, textY, if (tier == FlagHistory.Tier.RED) RED else baseColor, false)
+                // --- box: the crosshair target only, hitbox-accurate, per-edge occlusion ---
+                if (targetUuid != null && entity.uuid == targetUuid) {
+                    drawHitbox(graphics, mc, w, h, level, camPos, box, WHITE)
                 }
 
+                // --- foot trail ---
                 drawTrail(graphics, mc, level, camPos, tp, baseColor, ticks, w, h)
             } catch (_: Throwable) {
                 // skip one player, keep the rest
             }
         }
     }
+
+    // ---- nameplate -----------------------------------------------------------------------
+
+    private fun drawLabel(
+        graphics: DrawContext,
+        font: TextRenderer,
+        label: Text,
+        anchor: Pair<Int, Int>,
+        pixelsPerBlock: Double,
+        red: Boolean,
+        color: Int,
+    ) {
+        // Font pixel height is 9; render the label ~LABEL_BLOCK_HEIGHT blocks tall at that distance.
+        val scale = if (pixelsPerBlock > 0.0) {
+            (pixelsPerBlock * LABEL_BLOCK_HEIGHT / 9.0).coerceIn(0.15, 4.0).toFloat()
+        } else {
+            1f
+        }
+        val textW = font.getWidth(label)
+        val x = anchor.first - textW * scale / 2f
+        val y = anchor.second - 12f * scale
+        // DrawContext carries a 2D matrix stack on 1.21.11: translate to the anchor, scale, draw at 0,0.
+        val m = graphics.matrices
+        m.pushMatrix()
+        try {
+            m.translate(x, y)
+            m.scale(scale, scale)
+            if (red) graphics.fill(-2, -1, textW + 2, 10, RED_PLATE)
+            graphics.drawText(font, label, 0, 0, color, false)
+        } finally {
+            m.popMatrix()
+        }
+    }
+
+    // ---- hitbox wireframe ----------------------------------------------------------------
+
+    /**
+     * Draws the entity's AABB as its 12 projected edges. Each edge is skipped when its midpoint is
+     * occluded, so the part of the box behind cover is not drawn.
+     */
+    private fun drawHitbox(
+        graphics: DrawContext,
+        mc: MinecraftClient,
+        w: Int,
+        h: Int,
+        level: ClientWorld,
+        camPos: Vec3d,
+        box: Box,
+        color: Int,
+    ) {
+        val corners = arrayOf(
+            Vec3d(box.minX, box.minY, box.minZ), // 0
+            Vec3d(box.maxX, box.minY, box.minZ), // 1
+            Vec3d(box.minX, box.maxY, box.minZ), // 2
+            Vec3d(box.maxX, box.maxY, box.minZ), // 3
+            Vec3d(box.minX, box.minY, box.maxZ), // 4
+            Vec3d(box.maxX, box.minY, box.maxZ), // 5
+            Vec3d(box.minX, box.maxY, box.maxZ), // 6
+            Vec3d(box.maxX, box.maxY, box.maxZ), // 7
+        )
+        val screen = arrayOfNulls<Pair<Int, Int>>(8)
+        for (i in corners.indices) {
+            screen[i] = project(mc, w, h, corners[i])
+            if (screen[i] == null) return // any corner behind the camera → skip the whole box
+        }
+        val edges = intArrayOf(
+            0, 1, 1, 3, 3, 2, 2, 0, // bottom (y min)
+            4, 5, 5, 7, 7, 6, 6, 4, // top (y max)
+            0, 4, 1, 5, 2, 6, 3, 7, // verticals
+        )
+        var i = 0
+        while (i < edges.size) {
+            val a = edges[i]
+            val b = edges[i + 1]
+            i += 2
+            val mid = Vec3d(
+                (corners[a].x + corners[b].x) * 0.5,
+                (corners[a].y + corners[b].y) * 0.5,
+                (corners[a].z + corners[b].z) * 0.5,
+            )
+            if (!sightLineClear(level, camPos, mid)) continue
+            val sa = screen[a] ?: continue
+            val sb = screen[b] ?: continue
+            drawLine(graphics, sa.first, sa.second, sb.first, sb.second, color)
+        }
+    }
+
+    // ---- trail ---------------------------------------------------------------------------
 
     private fun drawTrail(
         graphics: DrawContext,
@@ -222,10 +304,12 @@ object OverrideHudRenderer : HudElement {
             val alpha = ((1f - t).coerceIn(0f, 1f) * 220f).toInt().coerceIn(0, 255)
             if (alpha <= 8) return@forEachRecent
             val argb = (alpha shl 24) or (color and 0x00FFFFFF)
-            val size = if (sampleIndex == 0) 2 else 1
+            // One cube ≈ 0.12 blocks wide, scaled by the local pixels-per-block (近大远小).
+            val ppb = pixelsPerBlock(mc, w, h, point) ?: 0.0
+            val half = ((ppb * 0.06).coerceIn(1.0, 5.0)).toInt()
             graphics.fill(
-                screen.first - size, screen.second - size,
-                screen.first + size + 1, screen.second + size + 1, argb,
+                screen.first - half, screen.second - half,
+                screen.first + half + 1, screen.second + half + 1, argb,
             )
         }
     }
@@ -239,10 +323,22 @@ object OverrideHudRenderer : HudElement {
     private fun project(mc: MinecraftClient, w: Int, h: Int, world: Vec3d): Pair<Int, Int>? {
         val ndc = try { mc.gameRenderer.project(world) } catch (_: Throwable) { return null }
         if (ndc.z < -1.0 || ndc.z > 1.0) return null
-        val sx = ((ndc.x * 0.5 + 0.5) * w).toInt()
-        val sy = ((1.0 - (ndc.y * 0.5 + 0.5)) * h).toInt()
-        if (sx < -w / 2 || sx > w * 3 / 2 || sy < -h / 2 || sy > h * 3 / 2) return null
-        return sx to sy
+        val sx = ((ndc.x * 0.5 + 0.5) * w)
+        val sy = ((1.0 - (ndc.y * 0.5 + 0.5)) * h)
+        if (sx < -w || sx > w * 2.0 || sy < -h || sy > h * 2.0) return null
+        return sx.toInt() to sy.toInt()
+    }
+
+    /**
+     * Pixels covered by one world block at [world]'s depth, measured by projecting a known vertical
+     * segment — this is what makes every element scale with distance (perspective), instead of using
+     * a fixed pixel size.
+     */
+    private fun pixelsPerBlock(mc: MinecraftClient, w: Int, h: Int, world: Vec3d): Double? {
+        val a = project(mc, w, h, world) ?: return null
+        val b = project(mc, w, h, world.add(0.0, 0.25, 0.0)) ?: return null
+        val d = hypot((a.first - b.first).toDouble(), (a.second - b.second).toDouble())
+        return (d * 4.0).takeIf { it.isFinite() && it > 0.05 }
     }
 
     /**
@@ -263,15 +359,29 @@ object OverrideHudRenderer : HudElement {
         true
     }
 
-    private fun drawBox(graphics: DrawContext, x1: Float, y1: Float, x2: Float, y2: Float, color: Int) {
-        val left = x1.toInt()
-        val top = y1.toInt()
-        val right = x2.toInt()
-        val bottom = y2.toInt()
-        if (right <= left || bottom <= top) return
-        graphics.fill(left, top, right, top + 1, color)
-        graphics.fill(left, bottom, right, bottom + 1, color)
-        graphics.fill(left, top, left + 1, bottom, color)
-        graphics.fill(right, top, right + 1, bottom, color)
+    /** Screen-space Bresenham line, used for the projected hitbox edges. */
+    private fun drawLine(graphics: DrawContext, x1: Int, y1: Int, x2: Int, y2: Int, color: Int) {
+        var x = x1
+        var y = y1
+        val dx = abs(x2 - x1)
+        val dy = -abs(y2 - y1)
+        val sx = if (x1 < x2) 1 else -1
+        val sy = if (y1 < y2) 1 else -1
+        var err = dx + dy
+        var guard = 0
+        while (true) {
+            graphics.fill(x, y, x + 1, y + 1, color)
+            if (x == x2 && y == y2) break
+            if (++guard > 4096) break
+            val e2 = err * 2
+            if (e2 >= dy) {
+                err += dy
+                x += sx
+            }
+            if (e2 <= dx) {
+                err += dx
+                y += sy
+            }
+        }
     }
 }
