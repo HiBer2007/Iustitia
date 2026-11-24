@@ -71,6 +71,9 @@ object Keybinds {
         Bind("replaySeekBack", KEYPAD_SUBTRACT, null),
         Bind("replayExit", InputConstants.KEY_NUMPAD0, null),
         Bind("replayToggle", InputConstants.KEY_MULTIPLY, null),
+        // Render-engine switch (INGAME ⇄ OVERRIDE). F10 is unused by vanilla, so it does not steal
+        // an existing bind; rebindable in Controls → Iustitia like every other bind.
+        Bind("engine", InputConstants.KEY_F10, null),
     )
 
     /** All registered binds (read by [dev.iustitia.ui.KeybindHubScreen]). Order = display order. */

@@ -1,5 +1,7 @@
 package dev.iustitia.config
 
+import dev.iustitia.render.engine.RenderEngine
+
 /**
  * On-disk configuration for Iustitia. Persisted as `config/iustitia.json` (see
  * [ConfigManager]) and editable live via YACL + `/iustitia`. Serialized by hand
@@ -153,6 +155,20 @@ data class IustitiaConfig(
     /** Emissive (glowing) red nameplate: red-tier plates are drawn with a bright outline + full
      *  brightness so a confirmed cheater is unmistakable. Off = plain red text. */
     var nameplateRedGlow: Boolean = true,
+
+    /** Which engine draws the display cues.
+     *
+     *  [RenderEngine.INGAME] = the depth-tested world overlay (foot trail / nameplates / target box
+     *  submitted into the level render pass) — the engine everything above describes.
+     *  [RenderEngine.OVERRIDE] = the same cues projected into screen space and drawn as a HUD layer
+     *  with manual raycast occlusion, so the layer can be routed through the optional Streamproof
+     *  offscreen composite and stay out of recordings. Switchable mid-game with the `engine` keybind. */
+    var renderEngine: RenderEngine = RenderEngine.INGAME,
+
+    /** Streamproof (OVERRIDE only): when ON and the Streamproof mod is installed + live, the
+     *  OVERRIDE layer is composited offscreen and is invisible to OBS game/window capture. When OFF
+     *  (or the mod is absent) OVERRIDE still renders — visibly, like any other HUD. */
+    var streamproof: Boolean = true,
 
     /** Watch follow-cam: pressing the `watch` keybind on a crosshair-targeted OTHER player starts a
      *  sustained slow auto-orbit third-person camera around them (a "spectate the cheater" view);

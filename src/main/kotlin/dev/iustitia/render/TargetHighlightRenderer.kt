@@ -48,6 +48,8 @@ object TargetHighlightRenderer {
             LevelRenderEvents.COLLECT_SUBMITS.register(LevelRenderEvents.CollectSubmits { ctx ->
                 try {
                     if (!ConfigManager.config.targetHighlight) return@CollectSubmits
+                    // 1.6.0 render engines: the OVERRIDE HUD layer draws the target box itself.
+                    if (dev.iustitia.render.engine.EngineManager.isOverride()) return@CollectSubmits
                     val mc = Minecraft.getInstance()
                     val hit = mc.hitResult
                     if (hit !is EntityHitResult) return@CollectSubmits

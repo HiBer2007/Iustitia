@@ -73,6 +73,9 @@ object FootTrailRenderer {
 
     private fun render(ctx: LevelRenderContext) {
         val cfg = try { ConfigManager.config } catch (_: Throwable) { return }
+        // 1.6.0 render engines: in OVERRIDE the same trail is drawn by OverrideHudRenderer in screen
+        // space (so it can go through the streamproof composite); the world pass stays silent.
+        if (dev.iustitia.render.engine.EngineManager.isOverride()) return
         if (!cfg.footTrail) return
         val ticks = cfg.footTrailTicks.coerceIn(1, 40)
         val players = try { EntityTrackerManager.all() } catch (_: Throwable) { return }

@@ -14,6 +14,24 @@ Detects **both 1.8-era and modern-era cheats** by passively observing *other* pl
 
 ---
 
+## What's new in 1.6.0 — two render engines
+
+- **Two render engines.** *INGAME* (unchanged) draws the foot trail, nameplates and target box as
+  depth-tested world geometry. *OVERRIDE* draws the same cues as a **screen-space HUD layer**:
+  positions are projected with `GameRenderer.projectPointToScreen`, drawn with HUD fills/text, and
+  occluded by hand — every marker is tested with a `ClipContext` ray from the camera, so a player
+  behind a wall is not drawn (the same "no wallhack" rule the in-game engine gets from the depth
+  buffer).
+- **Streamproof (optional).** When the Streamproof mod is installed and live, the OVERRIDE layer is
+  composited offscreen and therefore **does not appear in OBS game/window capture**. Without it (or
+  with *Streamproof* off) OVERRIDE still renders — visibly. The bridge is reflective, so this is an
+  optional integration, never a dependency.
+- **Switch at runtime** with the new `engine` keybind (default **F10**, rebindable in Controls →
+  Iustitia) or with *Render engine* in `/ius config`. Switching back to INGAME clears the offscreen
+  composite so no stale frame lingers.
+- **Both engines keep every cue**: target accent box, tier boxes, floating nameplates (tier glyph +
+  native display name, red plate highlight) and the fading foot trail.
+
 ## What's new in 1.5.0 — Minecraft 26.3
 
 - **Ported to Minecraft 26.3.** Java 25, Fabric Loader 0.20.1, Fabric API 0.165.2+26.3, Kotlin 2.4.21,

@@ -78,6 +78,9 @@ object NameplateRenderer {
 
     private fun render(ctx: LevelRenderContext) {
         val cfg = try { ConfigManager.config } catch (_: Throwable) { return }
+        // 1.6.0 render engines: OVERRIDE draws the plates in screen space (stream-proofable); the
+        // world-space plate must not double up with it.
+        if (dev.iustitia.render.engine.EngineManager.isOverride()) return
         if (!cfg.nameplates) return
         val mc = Minecraft.getInstance()
         val self = mc.player ?: return

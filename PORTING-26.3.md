@@ -146,3 +146,32 @@ Other renamed members worth knowing: `PoseStack.push/pop/peek/multiply` → `pus
   and the freecam/replay camera overrides. Those paths are fail-open and were exercised by the
   in-world launch, but a visual pass on a real server is still worth doing before release.
 
+## Render engines (1.6.0)
+
+The display cues run on one of two engines, selected by `renderEngine` in `/ius config` or flipped at
+runtime with the `engine` keybind (F10 by default):
+
+| | INGAME (default) | OVERRIDE |
+| --- | --- | --- |
+| Draw path | `LevelRenderEvents.COLLECT_SUBMITS` world geometry (`submitShapeOutline` / `submitText`) | `HudElement` screen-space layer on `GuiGraphicsExtractor` |
+| Depth / occlusion | GPU depth test — free, exact | manual: one `ClipContext` ray per marker (head / chest / feet); trail samples are raycast too |
+| Capture-visible | yes (it is world rendering) | only when Streamproof is off or missing |
+| Cost | a few submits per tracked player | roughly 2–14 raycasts per tracked player per frame |
+
+Implementation notes:
+
+- `render/engine/StreamproofBridge.kt` reaches the external Streamproof mod reflectively
+  (`win.transgirls.streamproof.api.StreamproofAPI`), the same optional integration FireballAlarm
+  uses. It is never a dependency: when the class is absent the bridge reports "not ready" and the
+  OVERRIDE layer renders visibly. `beginHud()/endHud()` bracket the layer; `clearTargets()` runs when
+  the engine flips back to INGAME so a stale offscreen frame cannot keep compositing.
+- `render/engine/OverrideHudRenderer.kt` projects with `GameRenderer.projectPointToScreen` (26.3 still
+  ships it) and draws boxes/labels/trail with `GuiGraphicsExtractor.fill/text`. Occlusion uses
+  `Level.clip(ClipContext(from, to, COLLIDER, NONE, CollisionContext.empty()))`, so transparent,
+  non-colliding blocks do not occlude.
+- The world renderers (`FootTrailRenderer`, `NameplateRenderer`, `TargetHighlightRenderer`) early-out
+  while OVERRIDE is selected, so the engines never double-draw.
+- `streamproof` is a separate switch: it only decides whether the OVERRIDE layer takes the offscreen
+  path. The OVERRIDE engine itself always works.
+
+

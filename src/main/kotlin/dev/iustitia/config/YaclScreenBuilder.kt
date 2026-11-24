@@ -66,6 +66,31 @@ object YaclScreenBuilder {
                     .option(bool("iustitia.cfg.option.burstSparks.name", "iustitia.cfg.option.burstSparks.desc", { cfg.burstSparks }) { cfg.burstSparks = it })
                     .option(bool("iustitia.cfg.option.hoverTooltip.name", "iustitia.cfg.option.hoverTooltip.desc", { cfg.hoverTooltip }) { cfg.hoverTooltip = it })
                     .option(bool("iustitia.cfg.option.tabListBadge.name", "iustitia.cfg.option.tabListBadge.desc", { cfg.tabListBadge }) { cfg.tabListBadge = it })
+                    // Render engine (1.6.0): INGAME world overlay vs OVERRIDE screen-space HUD that
+                    // can be routed through the Streamproof offscreen composite.
+                    .apply {
+                        val streamproofOption = bool(
+                            "iustitia.cfg.option.streamproof.name",
+                            "iustitia.cfg.option.streamproof.desc",
+                            { cfg.streamproof },
+                        ) { cfg.streamproof = it }
+                        fun overrideSelected() = cfg.renderEngine == dev.iustitia.render.engine.RenderEngine.OVERRIDE
+                        option(
+                            Option.createBuilder<dev.iustitia.render.engine.RenderEngine>()
+                                .name(L10n.t("iustitia.cfg.option.renderEngine.name"))
+                                .description(OptionDescription.of(L10n.t("iustitia.cfg.option.renderEngine.desc")))
+                                .binding(cfg.renderEngine, { cfg.renderEngine }, { cfg.renderEngine = it })
+                                .addListener { opt, _ ->
+                                    try { streamproofOption.setAvailable(opt.pendingValue() == dev.iustitia.render.engine.RenderEngine.OVERRIDE) } catch (_: Throwable) {}
+                                }
+                                .controller { opt ->
+                                    EnumControllerBuilder.create(opt)
+                                        .enumClass(dev.iustitia.render.engine.RenderEngine::class.java)
+                                }
+                                .build(),
+                        )
+                        option(streamproofOption)
+                    }
                     .option(bool("iustitia.cfg.option.persistence.name", "iustitia.cfg.option.persistence.desc", { cfg.persistenceEnabled }) { cfg.persistenceEnabled = it })
                     .build()
             )

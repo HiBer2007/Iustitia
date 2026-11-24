@@ -299,6 +299,10 @@ object ConfigManager {
         addProperty("footTrailTicks", c.footTrailTicks)
         addProperty("nameplates", c.nameplates)
         addProperty("nameplateRedGlow", c.nameplateRedGlow)
+        // Render-engine selection (1.6.0): the enum is stored by name so an unknown/older value
+        // falls back to INGAME on load instead of failing the whole config parse.
+        addProperty("renderEngine", c.renderEngine.name)
+        addProperty("streamproof", c.streamproof)
         addProperty("watchFollowCam", c.watchFollowCam)
         addProperty("burstSparks", c.burstSparks)
         addProperty("hoverTooltip", c.hoverTooltip)
@@ -404,6 +408,17 @@ object ConfigManager {
         if (o.has("footTrailTicks")) c.footTrailTicks = o.get("footTrailTicks").asInt
         if (o.has("nameplates")) c.nameplates = o.get("nameplates").asBoolean
         if (o.has("nameplateRedGlow")) c.nameplateRedGlow = o.get("nameplateRedGlow").asBoolean
+        // Fail-open parse: an unknown engine name keeps the default (INGAME).
+        if (o.has("renderEngine")) {
+            try {
+                c.renderEngine = dev.iustitia.render.engine.RenderEngine.valueOf(
+                    o.get("renderEngine").asString.uppercase(),
+                )
+            } catch (_: Throwable) {
+                // keep INGAME
+            }
+        }
+        if (o.has("streamproof")) c.streamproof = o.get("streamproof").asBoolean
         if (o.has("watchFollowCam")) c.watchFollowCam = o.get("watchFollowCam").asBoolean
         if (o.has("burstSparks")) c.burstSparks = o.get("burstSparks").asBoolean
         if (o.has("hoverTooltip")) c.hoverTooltip = o.get("hoverTooltip").asBoolean
