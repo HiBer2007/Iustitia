@@ -6,7 +6,7 @@ plugins {
     `java-library`
 }
 
-version = "1.6.2"
+version = "1.6.3"
 group = "dev.iustitia"
 
 base { archivesName.set("iustitia") }
