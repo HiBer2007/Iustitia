@@ -19,7 +19,6 @@ import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
 import kotlin.math.abs
-import kotlin.math.hypot
 
 /**
  * OVERRIDE render engine: the display cues projected into screen space and drawn as a HUD layer, so
@@ -71,9 +70,6 @@ object OverrideHudRenderer : HudElement {
 
     /** Trail samples actually drawn (the ring can hold more; keeps the polyline readable). */
     private const val MAX_TRAIL_SAMPLES = 20
-
-    /** Occlusion rays spent on one player's trail per frame (the newest ones). */
-    private const val MAX_TRAIL_RAYS = 8
 
     /** Label height in blocks — used to turn [pixelsPerBlock] into a font scale. */
     private const val LABEL_BLOCK_HEIGHT = 0.26
@@ -160,31 +156,31 @@ object OverrideHudRenderer : HudElement {
                 val box: AABB = entity.boundingBox
                 val headPoint = Vec3((box.minX + box.maxX) * 0.5, box.maxY - 0.2, (box.minZ + box.maxZ) * 0.5)
                 val chestPoint = Vec3((box.minX + box.maxX) * 0.5, box.minY + box.ysize * 0.62, (box.minZ + box.maxZ) * 0.5)
-                // Feet-only visibility does not count: if the upper body is behind cover, stay hidden.
+                // 1.6.4: NO player-level skip. Occlusion is per element — the trail hides individual
+                // samples that are blocked, the box hides individual edges, and only the name label
+                // needs the head/chest to be visible (it hangs above the head).
                 val headClear = sightLineClear(level, camPos, headPoint)
                 val chestClear = sightLineClear(level, camPos, chestPoint)
-                if (!headClear && !chestClear) continue
 
-                val headScreen = project(mc, w, h, headPoint) ?: continue
-                val ppb = pixelsPerBlock(mc, w, h, headPoint) ?: 0.0
-
-                // --- nameplate: perspective-scaled, centred above the hitbox ---
-                val glyph = when (tier) {
-                    FlagHistory.Tier.RED -> "X"
-                    FlagHistory.Tier.YELLOW -> "!"
-                    FlagHistory.Tier.GREEN -> "+"
-                }
-                val native = try { entity.displayName } catch (_: Throwable) { Component.empty() }
-                val label = Component.empty()
-                    .append(Component.literal("[$glyph] ").withStyle { it.withColor(baseColor) })
-                    .append(native)
-                // Same rule as the INGAME plates: only supplement vanilla, never double it. While the
-                // server lets the vanilla nametag render (the standing case) its prefix already shows
-                // the tier, so our own plate is drawn only when vanilla hides it — a sneak — and, as
-                // in INGAME, a clean (green) player is never labelled.
-                val sneaking = try { entity.isShiftKeyDown } catch (_: Throwable) { false }
-                if (sneaking && tier != FlagHistory.Tier.GREEN) {
-                    drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
+                // --- nameplate: only when vanilla hides it (sneak), never for green ---
+                if (tier != FlagHistory.Tier.GREEN &&
+                    (headClear || chestClear) &&
+                    (try { entity.isShiftKeyDown } catch (_: Throwable) { false })
+                ) {
+                    val headScreen = projectRaw(mc, w, h, headPoint)
+                    if (headScreen != null && onScreen(headScreen, w, h)) {
+                        val ppb = pixelsPerBlock(mc, h, headPoint) ?: 0.0
+                        val glyph = when (tier) {
+                            FlagHistory.Tier.RED -> "X"
+                            FlagHistory.Tier.YELLOW -> "!"
+                            FlagHistory.Tier.GREEN -> "+"
+                        }
+                        val native = try { entity.displayName } catch (_: Throwable) { Component.empty() }
+                        val label = Component.empty()
+                            .append(Component.literal("[$glyph] ").withStyle { it.withColor(baseColor) })
+                            .append(native)
+                        drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
+                    }
                 }
 
                 // --- box: the crosshair target only, hitbox-accurate, per-edge occlusion ---
@@ -265,7 +261,7 @@ object OverrideHudRenderer : HudElement {
         )
         val screen = arrayOfNulls<Pair<Int, Int>>(8)
         for (i in corners.indices) {
-            screen[i] = project(mc, w, h, corners[i])
+            screen[i] = projectRaw(mc, w, h, corners[i])
             if (screen[i] == null) return // any corner behind the camera → skip the whole box
         }
         val edges = intArrayOf(
@@ -306,26 +302,23 @@ object OverrideHudRenderer : HudElement {
         val total = minOf(ticks, MAX_TRAIL_SAMPLES)
         if (total <= 1) return
         var index = 0
-        var rays = 0
-        var visible = true
         tp.ring.forEachRecent(total, dev.iustitia.Iustitia.tickCounter) { x, y, z ->
             val sampleIndex = index
             index++
             if (sampleIndex >= total) return@forEachRecent
             val point = Vec3(x, y + 0.12, z)
-            if (rays < MAX_TRAIL_RAYS) {
-                rays++
-                visible = sightLineClear(level, camPos, point)
-            }
-            if (!visible) return@forEachRecent
-            val screen = project(mc, w, h, point) ?: return@forEachRecent
+            // 1.6.4: EVERY sample is occlusion-tested on its own — a point behind a wall is dropped
+            // even when the player itself is visible, so the trail never draws through terrain.
+            if (!sightLineClear(level, camPos, point)) return@forEachRecent
+            val screen = projectRaw(mc, w, h, point) ?: return@forEachRecent
+            if (!onScreen(screen, w, h)) return@forEachRecent
             val t = sampleIndex.toFloat() / (total - 1).coerceAtLeast(1)
             val alpha = ((1f - t).coerceIn(0f, 1f) * 220f).toInt().coerceIn(0, 255)
             if (alpha <= 8) return@forEachRecent
             val argb = (alpha shl 24) or (color and 0x00FFFFFF)
-            // One cube ≈ 0.12 blocks wide, scaled by the local pixels-per-block (近大远小).
-            val ppb = pixelsPerBlock(mc, w, h, point) ?: 0.0
-            val half = ((ppb * 0.06).coerceIn(1.0, 5.0)).toInt()
+            // One cube ≈ 0.12 blocks wide, strictly scaled by the local pixels-per-block.
+            val ppb = pixelsPerBlock(mc, h, point) ?: 0.0
+            val half = ((ppb * 0.06).coerceIn(1.0, 40.0)).toInt()
             graphics.fill(
                 screen.first - half, screen.second - half,
                 screen.first + half + 1, screen.second + half + 1, argb,
@@ -336,28 +329,50 @@ object OverrideHudRenderer : HudElement {
     // ---- geometry helpers ----------------------------------------------------------------
 
     /**
-     * World → GUI pixel projection. `GameRenderer.projectPointToScreen` returns NDC (x/y/z in -1..1
-     * for points in front of the camera); z outside that range is behind the near plane or past the
-     * far plane.
+     * World → GUI pixel projection **with no screen-bounds cull** (only the near/far clip check).
+     * `GameRenderer.projectPointToScreen` returns NDC (x/y/z in -1..1 for points in front of the
+     * camera). Use this for anything that must be positioned by the strict spatial mapping — a very
+     * close object can legitimately project far outside the viewport while still being on screen
+     * partially, and culling it there is what made close players vanish.
      */
-    private fun project(mc: Minecraft, w: Int, h: Int, world: Vec3): Pair<Int, Int>? {
+    private fun projectRaw(mc: Minecraft, w: Int, h: Int, world: Vec3): Pair<Int, Int>? {
         val ndc = try { mc.gameRenderer.projectPointToScreen(world) } catch (_: Throwable) { return null }
         if (ndc.z < -1.0 || ndc.z > 1.0) return null
         val sx = (ndc.x * 0.5 + 0.5) * w
         val sy = (1.0 - (ndc.y * 0.5 + 0.5)) * h
-        if (sx < -w || sx > w * 2.0 || sy < -h || sy > h * 2.0) return null
+        if (!sx.isFinite() || !sy.isFinite()) return null
         return sx.toInt() to sy.toInt()
     }
 
+    /** False only when the point is clearly outside the viewport (used to skip off-screen draws). */
+    private fun onScreen(pos: Pair<Int, Int>, w: Int, h: Int): Boolean =
+        pos.first >= -w && pos.first <= w * 2 && pos.second >= -h && pos.second <= h * 2
+
     /**
-     * Pixels covered by one world block at [world]'s depth, measured by projecting a known vertical
-     * segment — this is what makes every element scale with distance instead of using a fixed size.
+     * Pixels covered by one world block at [world]'s depth, from the strict perspective mapping:
+     * `scale = (screenH / 2) / (depth * tan(fov/2))`, i.e. a plain `1/depth` law — no quadratic
+     * term and no dependence on where the point lands on the screen.
      */
-    private fun pixelsPerBlock(mc: Minecraft, w: Int, h: Int, world: Vec3): Double? {
-        val a = project(mc, w, h, world) ?: return null
-        val b = project(mc, w, h, world.add(0.0, 0.25, 0.0)) ?: return null
-        val d = hypot((a.first - b.first).toDouble(), (a.second - b.second).toDouble())
-        return (d * 4.0).takeIf { it.isFinite() && it > 0.05 }
+    private fun pixelsPerBlock(mc: Minecraft, screenH: Int, world: Vec3): Double? {
+        val camera = try { mc.gameRenderer.mainCamera() } catch (_: Throwable) { return null }
+        val camPos = camera.position()
+        val forward = try {
+            org.joml.Vector3f(0f, 0f, -1f).rotate(camera.rotation())
+        } catch (_: Throwable) {
+            return null
+        }
+        val depth = (world.x - camPos.x) * forward.x.toDouble() +
+            (world.y - camPos.y) * forward.y.toDouble() +
+            (world.z - camPos.z) * forward.z.toDouble()
+        if (depth <= 0.05) return null
+        val fov = try {
+            Math.toRadians(camera.fov.toDouble())
+        } catch (_: Throwable) {
+            Math.toRadians(70.0)
+        }
+        val half = kotlin.math.tan(fov / 2.0)
+        if (half <= 1e-4) return null
+        return (screenH / 2.0) / (depth * half)
     }
 
     /**
