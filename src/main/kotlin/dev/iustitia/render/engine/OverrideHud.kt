@@ -27,18 +27,20 @@ import kotlin.math.hypot
  * layer, so the whole layer can be handed to the optional Streamproof composite and stay out of
  * recordings.
  *
- * ## What it draws (1.6.2 rules)
+ * ## What it draws (1.6.3 rules — identical to the INGAME engine)
  *
- * **Only the YELLOW/RED self-drawn cues.** Clean (green) players are not drawn here at all: their
- * tier already lives on the vanilla nametag prefix, which stays in the game frame and does not need
- * to be hidden from a recording. Everything else about a clean player is left untouched.
+ * Every tracked player gets the same three cues the INGAME engine draws, with the same gating:
  *
  * - **Box: crosshair target only.** A hitbox-accurate wireframe (the 12 projected edges of the
- *   entity's `boundingBox`) is drawn only for the player the crosshair is on — exactly the INGAME
- *   engine's target-highlight semantics. It is *not* a per-player "always on" box.
- * - **Nameplates**: tier glyph + the player's native display name above the hitbox, drawn only when
- *   vanilla hides its own nametag (a sneak) so the label is never doubled.
- * - **Foot trail**: the fading recorded path as a dotted screen polyline.
+ *   entity's `boundingBox`) is drawn only for the player the crosshair is on. It is *not* a
+ *   per-player "always on" box. A green target follows the same `nametagGreenEnabled` opt-in as the
+ *   INGAME target highlight.
+ * - **Nameplate**: tier glyph + the player's native display name above the hitbox, drawn **only when
+ *   the vanilla nametag is hidden** (a sneak) and never for green players — exactly the INGAME plate
+ *   rule. The standing label is deliberately left to the vanilla nametag prefix (which stays visible
+ *   in-game and is not streamproofed).
+ * - **Foot trail**: the fading recorded path, for every tracked player; green ones follow
+ *   `footTrailGreen` like the INGAME trail.
  *
  * ## Occlusion (遮挡解算)
  *
@@ -146,10 +148,11 @@ object OverrideHudRenderer : HudElement {
                 if (entity.isRemoved || entity.uuid == selfUuid) continue
 
                 val tier = tp.tier
-                // Per user rule (1.6.2): OVERRIDE only carries the YELLOW/RED self-drawn cues. Clean
-                // players are left entirely to the vanilla nametag prefix (PlayerEntityRendererMixin),
-                // which stays visible in-game and does not need to be hidden from a recording.
-                if (tier == FlagHistory.Tier.GREEN) continue
+                // 1.6.3: the OVERRIDE layer carries the SAME cues as INGAME (trail / target box /
+                // sneak-only nameplate) for every tracked player — the only thing that differs is
+                // that the self-drawn NAME LABEL is restricted to the sneak case, exactly like the
+                // INGAME plates, so a standing player's label is left to the vanilla nametag prefix.
+                val cfg = ConfigManager.config
                 val baseColor = when (tier) {
                     FlagHistory.Tier.RED -> RED
                     FlagHistory.Tier.YELLOW -> YELLOW
@@ -179,19 +182,25 @@ object OverrideHudRenderer : HudElement {
                     .append(native)
                 // Same rule as the INGAME plates: only supplement vanilla, never double it. While the
                 // server lets the vanilla nametag render (the standing case) its prefix already shows
-                // the tier, so our own plate is drawn only when vanilla hides it — a sneak.
+                // the tier, so our own plate is drawn only when vanilla hides it — a sneak — and, as
+                // in INGAME, a clean (green) player is never labelled.
                 val sneaking = try { entity.isSneaking } catch (_: Throwable) { false }
-                if (sneaking) {
+                if (sneaking && tier != FlagHistory.Tier.GREEN) {
                     drawLabel(graphics, font, label, headScreen, ppb, tier == FlagHistory.Tier.RED, baseColor)
                 }
 
                 // --- box: the crosshair target only, hitbox-accurate, per-edge occlusion ---
-                if (targetUuid != null && entity.uuid == targetUuid) {
+                // Green targets follow the same opt-in as the INGAME target highlight.
+                if (targetUuid != null && entity.uuid == targetUuid &&
+                    (tier != FlagHistory.Tier.GREEN || cfg.nametagGreenEnabled)
+                ) {
                     drawHitbox(graphics, mc, w, h, level, camPos, box, WHITE)
                 }
 
-                // --- foot trail ---
-                drawTrail(graphics, mc, level, camPos, tp, baseColor, ticks, w, h)
+                // --- foot trail: every tracked player, green ones following the INGAME opt-in ---
+                if (tier != FlagHistory.Tier.GREEN || cfg.footTrailGreen) {
+                    drawTrail(graphics, mc, level, camPos, tp, baseColor, ticks, w, h)
+                }
             } catch (_: Throwable) {
                 // skip one player, keep the rest
             }
